@@ -9,6 +9,10 @@
 4. 发送邮件报告
 
 执行时间: 8:20
+
+计算规则:
+- 普通基金: 当日涨跌 = 份额 × (今日净值 - 昨日净值)
+- QDII基金: 净值有 T+1 延迟，Tushare 返回的最新净值是 T-1 的
 """
 import sqlite3
 import tushare as ts
@@ -33,11 +37,18 @@ def get_fund_nav(pro, fund_code):
         print(f"  获取净值失败 {fund_code}: {e}")
         return None, None
 
+def get_nav_by_date(conn, fund_code, nav_date):
+    """获取指定日期的净值"""
+    cursor = conn.cursor()
+    cursor.execute('SELECT nav FROM fund_nav_history WHERE fund_code = ? AND nav_date = ?', (fund_code, nav_date))
+    row = cursor.fetchone()
+    return row[0] if row else None
+
 def update_nav_history(conn, fund_code, nav_date, nav):
     """更新净值历史"""
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT OR REPLACE INTO fund_nav_history (fund_code, nav_date, nav)
+        INSERT OR IGNORE INTO fund_nav_history (fund_code, nav_date, nav)
         VALUES (?, ?, ?)
     ''', (fund_code, nav_date, nav))
     conn.commit()
@@ -63,10 +74,8 @@ def confirm_pending_trades(conn, pro):
         trade_dt = datetime.strptime(trade_date, '%Y-%m-%d')
         if is_qdii:
             confirm_date = (trade_dt + timedelta(days=2)).strftime('%Y-%m-%d')
-            nav_date = trade_date  # QDII用T日净值
         else:
             confirm_date = (trade_dt + timedelta(days=1)).strftime('%Y-%m-%d')
-            nav_date = trade_date
         
         # 检查是否到确认日期
         today = datetime.now().strftime('%Y-%m-%d')
@@ -74,19 +83,21 @@ def confirm_pending_trades(conn, pro):
             print(f"  {fund_code}: 等待确认日期 {confirm_date}")
             continue
         
-        # 获取净值
-        nav, actual_nav_date = get_fund_nav(pro, fund_code)
-        if not nav:
-            print(f"  {fund_code}: 无法获取净值")
-            continue
+        # 获取确认日净值（从净值历史表获取）
+        trade_date_fmt = trade_date.replace('-', '')
+        nav = get_nav_by_date(conn, fund_code, trade_date_fmt)
         
-        # 更新净值历史
-        update_nav_history(conn, fund_code, actual_nav_date, nav)
+        if not nav:
+            # 从 Tushare 获取
+            nav, nav_date = get_fund_nav(pro, fund_code)
+            if not nav:
+                print(f"  {fund_code}: 无法获取净值")
+                continue
+            update_nav_history(conn, fund_code, nav_date, nav)
         
         if trade_type == 'BUY':
             shares = amount / nav
             
-            # 更新持仓
             cursor.execute('SELECT shares, base_amount FROM fund_holdings WHERE fund_code = ?', (fund_code,))
             row = cursor.fetchone()
             
@@ -94,20 +105,17 @@ def confirm_pending_trades(conn, pro):
                 new_shares = row[0] + shares
                 new_base = row[1] + amount
                 cursor.execute('''
-                    UPDATE fund_holdings 
-                    SET shares = ?, base_amount = ?, nav = ?, nav_date = ?
-                    WHERE fund_code = ?
-                ''', (new_shares, new_base, nav, actual_nav_date, fund_code))
+                    UPDATE fund_holdings SET shares = ?, base_amount = ? WHERE fund_code = ?
+                ''', (new_shares, new_base, fund_code))
             else:
                 cursor.execute('''
-                    INSERT INTO fund_holdings (fund_code, shares, base_amount, nav, nav_date)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (fund_code, shares, amount, nav, actual_nav_date))
+                    INSERT INTO fund_holdings (fund_code, shares, base_amount)
+                    VALUES (?, ?, ?)
+                ''', (fund_code, shares, amount))
             
             print(f"  买入 {fund_code} {amount}元 → {shares:.2f}份 (净值{nav:.4f})")
             
         elif trade_type == 'SELL':
-            # 卖出处理
             cursor.execute('SELECT shares, base_amount FROM fund_holdings WHERE fund_code = ?', (fund_code,))
             row = cursor.fetchone()
             if row:
@@ -117,18 +125,15 @@ def confirm_pending_trades(conn, pro):
                 new_shares = row[0] - sell_shares
                 new_base = row[1] * (1 - sell_shares / row[0])
                 
-                if new_shares <= 0.01:  # 清仓
+                if new_shares <= 0.01:
                     cursor.execute('DELETE FROM fund_holdings WHERE fund_code = ?', (fund_code,))
                     print(f"  清仓 {fund_code} 卖出{actual_amount:.2f}元")
                 else:
                     cursor.execute('''
-                        UPDATE fund_holdings 
-                        SET shares = ?, base_amount = ?
-                        WHERE fund_code = ?
+                        UPDATE fund_holdings SET shares = ?, base_amount = ? WHERE fund_code = ?
                     ''', (new_shares, new_base, fund_code))
                     print(f"  卖出 {fund_code} {actual_amount:.2f}元")
         
-        # 更新交易状态
         cursor.execute('''
             UPDATE fund_trades SET status = 'CONFIRMED', confirm_date = ? WHERE id = ?
         ''', (confirm_date, trade_id))
@@ -148,48 +153,65 @@ def generate_snapshot(conn, pro):
         return
     
     today = datetime.now().strftime('%Y-%m-%d')
+    yesterday = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
     
     print(f"\n=== 生成 {today} 快照 ===")
     
+    # 先更新所有基金的净值历史
     for fund_code, fund_name, shares, base_amount in holdings:
-        # 获取最新净值
         nav, nav_date = get_fund_nav(pro, fund_code)
-        if not nav:
+        if nav and nav_date:
+            update_nav_history(conn, fund_code, nav_date, nav)
+    
+    # 生成快照
+    total_daily = 0
+    
+    for fund_code, fund_name, shares, base_amount in holdings:
+        is_qdii = fund_code in QDII_FUNDS
+        
+        # 获取今日和昨日净值
+        today_fmt = today.replace('-', '')
+        yesterday_fmt = yesterday.replace('-', '')
+        
+        # 从净值历史获取
+        nav_today = get_nav_by_date(conn, fund_code, today_fmt)
+        nav_yesterday = get_nav_by_date(conn, fund_code, yesterday_fmt)
+        
+        # 如果没有今日净值，用昨日净值（QDII 可能出现这种情况）
+        if not nav_today:
+            nav_today = nav_yesterday
+        
+        if not nav_today:
+            print(f"  {fund_code}: 无净值数据")
             continue
         
-        # 更新净值历史
-        update_nav_history(conn, fund_code, nav_date, nav)
-        
         # 计算资产和盈亏
-        asset_value = shares * nav
+        asset_value = shares * nav_today
         profit = asset_value - base_amount
         
-        # 计算当日涨跌 (需要前一日净值)
-        cursor.execute('''
-            SELECT nav FROM fund_nav_history 
-            WHERE fund_code = ? AND nav_date < ?
-            ORDER BY nav_date DESC LIMIT 1
-        ''', (fund_code, nav_date))
-        prev_nav_row = cursor.fetchone()
-        prev_nav = prev_nav_row[0] if prev_nav_row else nav
+        # 计算当日涨跌
+        if nav_yesterday:
+            daily_profit = shares * (nav_today - nav_yesterday)
+        else:
+            daily_profit = 0
         
-        daily_profit = shares * (nav - prev_nav)
+        total_daily += daily_profit
         
         # 插入快照
         cursor.execute('''
             INSERT OR REPLACE INTO daily_fund_snapshot 
             (date, fund_code, fund_name, shares, base_amount, asset_value, profit, nav, daily_profit)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (today, fund_code, fund_name, shares, base_amount, asset_value, profit, nav, daily_profit))
+        ''', (today, fund_code, fund_name, shares, base_amount, asset_value, profit, nav_today, daily_profit))
         
-        print(f"  {fund_code}: 净值{nav:.4f} 资产{asset_value:.2f} 盈亏{profit:+.2f} 当日{daily_profit:+.2f}")
+        print(f"  {fund_code}: 净值{nav_today:.4f} 资产{asset_value:.2f} 盈亏{profit:+.2f} 当日{daily_profit:+.2f}")
     
     conn.commit()
+    print(f"\n当日涨跌合计: {total_daily:+.2f}")
 
 def main():
     print(f"=== 基金每日更新 {datetime.now().strftime('%Y-%m-%d %H:%M')} ===")
     
-    # 初始化数据库
     if not os.path.exists(DB_PATH):
         print("数据库不存在，请先运行 init_db.py")
         return
