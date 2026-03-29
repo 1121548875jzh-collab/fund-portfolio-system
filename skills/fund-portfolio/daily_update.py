@@ -54,7 +54,14 @@ def update_nav_history(conn, fund_code, nav_date, nav):
     conn.commit()
 
 def confirm_pending_trades(conn, pro):
-    """确认 PENDING 交易"""
+    """
+    确认 PENDING 交易
+    
+    份额计算规则：
+    - 买入：份额 = 金额 / 交易日净值（T日买入用T日净值）
+    - 卖出：金额 = 份额 × 交易日净值
+    - 如果交易日净值还没出来，跳过等待下次确认
+    """
     cursor = conn.cursor()
     
     cursor.execute('''
@@ -70,7 +77,7 @@ def confirm_pending_trades(conn, pro):
     print(f"\n=== 确认 {len(pending)} 笔交易 ===")
     
     for trade_id, fund_code, amount, trade_type, trade_date, is_qdii, is_shares in pending:
-        # T+1 确认规则
+        # T+1 确认规则（QDII是T+2）
         trade_dt = datetime.strptime(trade_date, '%Y-%m-%d')
         if is_qdii:
             confirm_date = (trade_dt + timedelta(days=2)).strftime('%Y-%m-%d')
@@ -83,17 +90,33 @@ def confirm_pending_trades(conn, pro):
             print(f"  {fund_code}: 等待确认日期 {confirm_date}")
             continue
         
-        # 获取确认日净值（从净值历史表获取）
-        trade_date_fmt = trade_date.replace('-', '')
+        # ========== 核心：获取交易日净值 ==========
+        # 规则：T日买入，用T日净值计算份额
+        trade_date_fmt = trade_date.replace('-', '')  # 20260325
+        
+        # 先从净值历史表获取交易日净值
         nav = get_nav_by_date(conn, fund_code, trade_date_fmt)
         
         if not nav:
-            # 从 Tushare 获取
-            nav, nav_date = get_fund_nav(pro, fund_code)
-            if not nav:
+            # 历史表中没有，尝试从 Tushare 获取
+            nav_tushare, nav_date_tushare = get_fund_nav(pro, fund_code)
+            
+            if not nav_tushare:
                 print(f"  {fund_code}: 无法获取净值")
                 continue
-            update_nav_history(conn, fund_code, nav_date, nav)
+            
+            # 先保存获取到的净值
+            update_nav_history(conn, fund_code, nav_date_tushare, nav_tushare)
+            
+            # 检查 Tushare 返回的净值日期是否匹配交易日
+            if nav_date_tushare != trade_date_fmt:
+                # 净值日期不匹配，说明交易日净值还没出来
+                print(f"  {fund_code}: 交易日{trade_date}净值未出（Tushare最新:{nav_date_tushare}），等待")
+                continue
+            
+            nav = nav_tushare
+        
+        print(f"  {fund_code}: 使用交易日{trade_date}净值 {nav:.4f}")
         
         if trade_type == 'BUY':
             shares = amount / nav
