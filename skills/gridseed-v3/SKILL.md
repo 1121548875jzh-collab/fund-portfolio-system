@@ -1,0 +1,172 @@
+# GridSeed V3.0 - 网格定投策略系统
+
+## 核心规则
+
+### 阶段判断
+
+```python
+if grid_base_nav is None:
+    phase = 'ACCUMULATION'  # 建仓阶段
+else:
+    phase = 'GRID'  # 网格阶段
+```
+
+### 建仓阶段规则
+
+| step | 名称 | 触发条件 | 操作 |
+|:---:|:---|:---|:---|
+| 0 | L1 | 跌幅 ≥ 3% | 加仓 15% |
+| 1 | L2 | 跌幅 ≥ 3% | 加仓 15% |
+| 2 | L3 | 跌幅 ≥ 3% | 加仓 15% |
+| 3 | L4 | 跌幅 ≥ 3% | 加仓 15% |
+| 4 | L5 | 跌幅 ≥ 5% | 加仓 30% |
+| 5 | L6 | 跌幅 ≥ 5% | 加仓 30% |
+| 6 | — | — | 不再加仓 |
+
+### 网格阶段规则
+
+| 触发条件 | 操作 |
+|:---|:---|
+| 跌幅 ≥ 3% | 买入 100元 |
+| 涨幅 ≥ 10% | 卖出 |
+
+### 闲置唤醒规则
+
+| 条件 | 操作 |
+|:---|:---|
+| 10 个交易日无操作 | 提醒加仓 100元 |
+
+**注意**: 闲置唤醒不增加 step
+
+---
+
+## 计算公式
+
+### 跌幅计算
+
+```python
+drawdown = (current_nav - base_nav) / base_nav
+```
+
+- `current_nav`: 当前净值
+- `base_nav`: 基准净值（最后操作时的净值）
+
+### 加仓金额
+
+```python
+# L1-L4
+add_amount = current_asset * 0.15
+
+# L5-L6
+add_amount = current_asset * 0.30
+
+# 网格
+add_amount = 100
+```
+
+---
+
+## 状态更新
+
+### 交易类型识别
+
+通过 `trigger_reason` 字段区分：
+
+| trigger_reason | 说明 | step 变化 |
+|:---|:---|:---:|
+| L1加仓/L2加仓/... | 建仓加仓 | +1 |
+| 网格买入 | 网格阶段 | 不变 |
+| 闲置唤醒 | 独立规则 | 不变 |
+
+### 更新规则
+
+```python
+if 'L' in trigger_reason and '加仓' in trigger_reason:
+    new_step = old_step + 1
+elif trigger_reason in ['网格买入', '闲置唤醒']:
+    new_step = old_step
+```
+
+---
+
+## 监控基金 (15只)
+
+| 基金代码 | 基金名称 |
+|:---|:---|
+| 007882 | 易方达沪深300非银行金融ETF联接C |
+| 007040 | 新疆前海联合泳隆灵活配置混合 |
+| 001665 | 平安鑫安混合C |
+| 020629 | 汇添富上证科创板芯片ETF联接C |
+| 018463 | 德邦稳盈增长灵活配置C |
+| 003625 | 创金合信资源主题精选股票C |
+| 015790 | 永赢高端装备智选混合发起C |
+| 011957 | 鹏华新能源精选混合C |
+| 009982 | 万家创业板指数增强C |
+| 018125 | 永赢先进制造智选混合发起C |
+| 018957 | 中航机遇领航混合型 |
+| 019924 | 华泰柏瑞中证2000指数增强C |
+| 019261 | 富国恒生港股通高股息低波动C |
+| 021909 | 鹏华上证科创板50增强ETF联接C |
+| 022287 | 长城医药产业精选混合C |
+
+---
+
+## 数据库设计
+
+### strategy_positions
+
+| 字段 | 说明 |
+|:---|:---|
+| fund_code | 基金代码 |
+| fund_name | 基金名称 |
+| phase | ACCUMULATION/GRID |
+| step | 加仓次数 (0-6) |
+| total_cost | 总成本 |
+| total_shares | 总份额 |
+| last_nav | 基准净值 |
+| last_date | 最后操作日期 |
+| grid_base_nav | 网格基准净值 |
+
+### strategy_trades
+
+| 字段 | 说明 |
+|:---|:---|
+| fund_code | 基金代码 |
+| trade_date | 交易日期 |
+| trade_type | BUY/SELL |
+| amount | 金额 |
+| nav | 净值 |
+| shares | 份额 |
+| trigger_reason | 触发原因 |
+| status | PENDING/CONFIRMED |
+
+---
+
+## 使用方式
+
+```bash
+# 检查操作建议
+python3 skills/gridseed-v3/runner.py check
+
+# 同步交易
+python3 skills/gridseed-v3/sync_trades.py
+
+# 初始化数据库
+python3 skills/gridseed-v3/init_db.py
+```
+
+---
+
+## 定时任务
+
+| 时间 | 任务 |
+|:---|:---|
+| 8:26 | sync_trades.py |
+| 8:35 | daily_reminder.sh |
+
+---
+
+## 相关文档
+
+- **fund-portfolio/SKILL.md** - 基金系统核心规则
+- **fund-portfolio/TECH_SPEC.md** - 技术规范
