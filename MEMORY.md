@@ -40,6 +40,7 @@
 
 ## 邮件配置
 - **发件箱**: 1121548875jzh@gmail.com
-- **收件箱**: lihaiye@163.com
+- **收件箱**: 1121548875jzh@gmail.com
 - **SMTP**: smtp.gmail.com:587
 - **授权码**: vfdo etqu rsse oase
+- **模板**: 按 SKILL.md 格式（汇总+涨跌+定投+持仓明细+CSV附件）
