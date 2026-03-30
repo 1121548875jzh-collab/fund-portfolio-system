@@ -18,8 +18,15 @@
 
 ## 数据库位置
 
-- `fund_portfolio.db` → `/root/.openclaw/workspace-coder/fund_portfolio.db`
-- `vector_memory.db` → `/root/.openclaw/memory/vector_memory.db`（共享）
+- `fund_portfolio.db` → `/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db`
+- `gridseed.db` → `/root/.openclaw/workspace-coder/skills/gridseed-v3/data/gridseed.db`
+
+## Git仓库
+
+- **GitHub仓库**: https://github.com/1121548875jzh-collab/fund-portfolio-system
+- **SSH地址**: git@github.com:1121548875jzh-collab/fund-portfolio-system.git
+- **用户**: 1121548875jzh-collab (Zhihao Jiang)
+- **规则**: 所有修改提交到GitHub，用户修改后从这里git pull
 
 ---
 
