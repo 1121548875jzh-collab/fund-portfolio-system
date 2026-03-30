@@ -1,21 +1,30 @@
-# 经验教训 - Jack
+# 经验教训
 
-## 开发规范
+## 数据计算
 
-- **脚本必须返回结果**：不能直接 sys.exit
+- **份额计算必须用交易日净值**：Tushare返回最新净值可能是T-1日
+- **QDII净值T+1延迟**：已在数据中体现，无需特殊处理
+- **精度影响盈亏**：份额小数点后两位差异可导致盈亏偏差
+
+## 系统规范
+
+- **脚本必须返回结果**：不能直接sys.exit
 - **错误必须明确报告**：不静默跳过
-- **关键操作要有验证机制**
+- **数据库路径**：fund_portfolio.db在workspace-coder/skills/fund-portfolio/
 
-## 数据库规范
+## 定时任务顺序
 
-- **数据库位置**: fund_portfolio.db 存放在 workspace-coder
-- **查找前确认路径**: 其他机器人查找时需先确认
+```
+8:20 净值更新 (依赖Tushare数据)
+8:23 定投执行 (创建交易记录)
+8:26 GridSeed同步 (同步交易)
+8:28 净值补充 (手动操作净值)
+8:30 邮件发送 (汇总报告)
+8:35 GridSeed提醒 (策略建议)
+```
 
-## 记忆系统
+## Git工作流
 
-- **四层架构**: MEMORY.md / active-projects/ / tacit-knowledge/ / daily-notes/
-- **外置记忆**: robot_workspace-coder.json 需维护
-
----
-
-*从向量库恢复 - 2026-03-29*
+- 重要修改后立即提交
+- 提交信息格式: `type: description`
+- 类型: feat/fix/docs/sync

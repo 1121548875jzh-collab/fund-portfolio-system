@@ -1,5 +1,24 @@
 # HEARTBEAT.md
 
-# Keep this file empty (or with only comments) to skip heartbeat API calls.
+## 待办事项
 
-# Add tasks below when you want the agent to check something periodically.
+### 2026-03-30 周一
+- [ ] 8:20 净值更新后检查策略触发
+- [ ] 定投自动执行：017437(30) + 017091(25) + 017641(25) = 80元
+- [ ] GridSeed 闲置唤醒：013180 新能源车电池 +100元、013596 煤炭 +100元
+- [ ] 发送操作建议
+
+---
+
+## GridSeed 实时判断规则
+
+**下午 14:30 前用户提供当日涨跌估计 → 实时计算加减仓点**
+
+触发条件：
+- 建仓阶段（grid_base_nav=NULL）：
+  - L1-L4（step 0-3）：跌 ≥3% → 加仓 15%
+  - L5-L6（step 4-5）：跌 ≥5% → 加仓 30%
+- 网格阶段（grid_base_nav有值）：
+  - 跌 ≥3% → 买入 100元
+
+**无涨跌估计 → 隔日 8:20 净值更新后正常提醒**

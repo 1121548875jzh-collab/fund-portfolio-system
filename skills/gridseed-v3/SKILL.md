@@ -142,27 +142,50 @@ elif trigger_reason in ['网格买入', '闲置唤醒']:
 
 ---
 
+## 定时任务
+
+| 时间 | 任务 | 说明 |
+|:---|:---|:---|
+| 8:26 | sync_trades.py | 同步基金系统交易 |
+| 8:28 | strategy.py update_navs | 补充手动操作净值 |
+| 8:35 | strategy.py check | 检查操作建议 |
+
+---
+
+## 手动操作流程
+
+当你手动执行买入/卖出后，告诉我操作详情，我会更新监督点：
+
+**你说**: "007882 买了 100 元" 或 "020629 卖了 500 元"
+
+**我执行**:
+1. 更新 `last_date` → 操作日期（立即）
+2. 记录交易，状态 `PENDING_NAV`
+3. 第二天 8:28 补充 `last_nav`（净值出来后）
+
+**关键点**:
+- 监督点（`last_date`）立即更新
+- 监督净值（`last_nav`）隔日更新
+- 不干扰基金系统的正常流程
+
+---
+
 ## 使用方式
 
 ```bash
 # 检查操作建议
-python3 skills/gridseed-v3/runner.py check
+python3 skills/gridseed-v3/strategy.py check
 
-# 同步交易
+# 记录手动操作
+python3 skills/gridseed-v3/strategy.py record 007882 BUY 100
+python3 skills/gridseed-v3/strategy.py record 020629 SELL 500
+
+# 补充待处理净值
+python3 skills/gridseed-v3/strategy.py update_navs
+
+# 同步基金系统交易
 python3 skills/gridseed-v3/sync_trades.py
-
-# 初始化数据库
-python3 skills/gridseed-v3/init_db.py
 ```
-
----
-
-## 定时任务
-
-| 时间 | 任务 |
-|:---|:---|
-| 8:26 | sync_trades.py |
-| 8:35 | daily_reminder.sh |
 
 ---
 
