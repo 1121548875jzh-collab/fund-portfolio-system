@@ -2,18 +2,10 @@
 """
 基金持仓邮件报告发送
 
-执行时间: 8:30 (净值更新后)
+执行时间: 8:30
 
 数据来源: fund_holdings表（实时准确）
-模板格式: 投资报告模板
-
-报告日期规则:
-- 报告日期 = 普通基金最新净值日期
-- QDII基金有T+1延迟，净值日期比普通基金晚一天
-
-当日盈亏计算:
-- 普通基金: 份额 × (今日净值 - 昨日净值)
-- QDII基金: 份额 × (今日净值 - 昨日净值)，但日期延迟一天
+QDII基金列表: 从数据库读取
 """
 import sqlite3
 import smtplib
@@ -27,133 +19,102 @@ from datetime import datetime, timedelta
 
 DB_PATH = '/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db'
 
-# 邮件配置
 SMTP_SERVER = 'smtp.gmail.com'
 SMTP_PORT = 587
 SMTP_USER = '1121548875jzh@gmail.com'
 SMTP_PASSWORD = 'vfdoetqursseoase'
 TO_EMAIL = '1121548875jzh@gmail.com'
 
-# 基准日期
 BASE_DATE = '2026-03-14'
 
-# QDII基金列表
-QDII_FUNDS = ['017437', '017091', '017641', '012062']
+def get_qdii_funds(conn):
+    """从数据库获取QDII基金列表"""
+    cursor = conn.cursor()
+    cursor.execute("SELECT fund_code FROM dca_config WHERE is_qdii = 1")
+    return [row[0] for row in cursor.fetchall()]
 
 def get_report_date(cursor):
-    """获取报告日期（普通基金最新净值日期）"""
-    cursor.execute("""
-        SELECT MAX(nav_date) FROM fund_nav_history 
-        WHERE fund_code NOT IN ({})
-    """.format(','.join(["'{}'".format(f) for f in QDII_FUNDS])))
+    """获取报告日期"""
+    cursor.execute("SELECT MAX(nav_date) FROM fund_nav_history")
     return cursor.fetchone()[0]
 
-def get_nav_dates(cursor, report_date):
-    """
-    获取各类基金的净值日期
-    
-    返回:
-        normal_today: 普通基金今日净值日期
-        normal_prev: 普通基金昨日净值日期
-        qdii_today: QDII基金今日净值日期
-        qdii_prev: QDII基金昨日净值日期
-    """
+def get_nav_dates(cursor, report_date, qdii_funds):
+    """获取各类基金的净值日期"""
     normal_today = report_date
     
-    # 普通基金昨日净值日期
-    cursor.execute("""
+    qdii_placeholder = ','.join(["'{}'".format(f) for f in qdii_funds]) if qdii_funds else "''"
+    
+    cursor.execute(f"""
         SELECT MAX(nav_date) FROM fund_nav_history 
-        WHERE fund_code NOT IN ({}) AND nav_date < ?
-    """.format(','.join(["'{}'".format(f) for f in QDII_FUNDS])), (normal_today,))
+        WHERE fund_code NOT IN ({qdii_placeholder}) AND nav_date < ?
+    """, (normal_today,))
     normal_prev = cursor.fetchone()[0]
     
-    # QDII基金今日净值日期（比普通基金晚一天）
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT MAX(nav_date) FROM fund_nav_history 
-        WHERE fund_code IN ({})
-    """.format(','.join(["'{}'".format(f) for f in QDII_FUNDS])))
+        WHERE fund_code IN ({qdii_placeholder})
+    """)
     qdii_today = cursor.fetchone()[0]
     
-    # QDII基金昨日净值日期
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT MAX(nav_date) FROM fund_nav_history 
-        WHERE fund_code IN ({}) AND nav_date < ?
-    """.format(','.join(["'{}'".format(f) for f in QDII_FUNDS])), (qdii_today,))
+        WHERE fund_code IN ({qdii_placeholder}) AND nav_date < ?
+    """, (qdii_today,))
     qdii_prev = cursor.fetchone()[0]
     
     return normal_today, normal_prev, qdii_today, qdii_prev
 
-def get_summary(cursor, normal_today, normal_prev, qdii_today, qdii_prev):
+def get_summary(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds):
     """获取汇总数据"""
-    # 持仓汇总
     cursor.execute("""
-        SELECT ROUND(SUM(base_amount), 2),
-               ROUND(SUM(shares * nav), 2),
-               ROUND(SUM(shares * nav - base_amount), 2)
+        SELECT ROUND(SUM(base_amount), 2), ROUND(SUM(shares * nav), 2), ROUND(SUM(shares * nav - base_amount), 2)
         FROM fund_holdings
     """)
     total_base, total_asset, total_profit = cursor.fetchone()
     
-    # 今日涨跌：分别计算普通基金和QDII基金
     today_profit = 0
+    qdii_placeholder = ','.join(["'{}'".format(f) for f in qdii_funds]) if qdii_funds else "''"
     
-    # 普通基金当日盈亏
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT ROUND(SUM(h.shares * (n1.nav - n2.nav)), 2)
         FROM fund_holdings h
         JOIN fund_nav_history n1 ON h.fund_code = n1.fund_code AND n1.nav_date = ?
         JOIN fund_nav_history n2 ON h.fund_code = n2.fund_code AND n2.nav_date = ?
-        WHERE h.fund_code NOT IN ({})
-    """.format(','.join(["'{}'".format(f) for f in QDII_FUNDS])), (normal_today, normal_prev))
+        WHERE h.fund_code NOT IN ({qdii_placeholder})
+    """, (normal_today, normal_prev))
     normal_today_profit = cursor.fetchone()[0] or 0
     today_profit += normal_today_profit
     
-    # QDII基金当日盈亏
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT ROUND(SUM(h.shares * (n1.nav - n2.nav)), 2)
         FROM fund_holdings h
         JOIN fund_nav_history n1 ON h.fund_code = n1.fund_code AND n1.nav_date = ?
         JOIN fund_nav_history n2 ON h.fund_code = n2.fund_code AND n2.nav_date = ?
-        WHERE h.fund_code IN ({})
-    """.format(','.join(["'{}'".format(f) for f in QDII_FUNDS])), (qdii_today, qdii_prev))
+        WHERE h.fund_code IN ({qdii_placeholder})
+    """, (qdii_today, qdii_prev))
     qdii_today_profit = cursor.fetchone()[0] or 0
     today_profit += qdii_today_profit
     
-    # 昨日盈亏：从前一天快照获取
     report_date_fmt = normal_today[:4] + '-' + normal_today[4:6] + '-' + normal_today[6:8]
-    cursor.execute("""
-        SELECT ROUND(SUM(daily_profit), 2) FROM daily_fund_snapshot 
-        WHERE date = date(?, '-1 day')
-    """, (report_date_fmt,))
+    cursor.execute("SELECT ROUND(SUM(daily_profit), 2) FROM daily_fund_snapshot WHERE date = date(?, '-1 day')", (report_date_fmt,))
     prev_profit = cursor.fetchone()[0] or 0
     
-    # 基准盈亏（从3/14快照获取）
-    cursor.execute("""
-        SELECT ROUND(SUM(asset_value - base_amount), 2) 
-        FROM daily_fund_snapshot WHERE date = ?
-    """, (BASE_DATE,))
+    cursor.execute("SELECT ROUND(SUM(asset_value - base_amount), 2) FROM daily_fund_snapshot WHERE date = ?", (BASE_DATE,))
     base_profit = cursor.fetchone()[0] or -389.14
     
-    # 清仓盈亏
     cursor.execute("SELECT ROUND(SUM(total_profit), 2) FROM closed_position_profit")
     closed_profit = cursor.fetchone()[0] or -93.69
     
     profit_pct = total_profit / total_base * 100 if total_base else 0
     
     return {
-        'total_base': total_base,
-        'total_asset': total_asset,
-        'total_profit': total_profit,
-        'profit_pct': profit_pct,
-        'prev_profit': prev_profit,
-        'today_profit': today_profit,
-        'base_profit': base_profit,
-        'closed_profit': closed_profit
+        'total_base': total_base, 'total_asset': total_asset, 'total_profit': total_profit,
+        'profit_pct': profit_pct, 'prev_profit': prev_profit, 'today_profit': today_profit,
+        'base_profit': base_profit, 'closed_profit': closed_profit
     }
 
-def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev):
-    """获取持仓明细（含涨跌幅）"""
-    # 获取一周前、一月前日期
+def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds):
+    """获取持仓明细"""
     nav_dt = datetime.strptime(normal_today, '%Y%m%d')
     week_ago = (nav_dt - timedelta(days=7)).strftime('%Y%m%d')
     month_ago = (nav_dt - timedelta(days=30)).strftime('%Y%m%d')
@@ -161,33 +122,27 @@ def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev
     result = []
     total_base = total_asset = total_profit = total_today = 0
     
-    # 获取持仓
     cursor.execute("""
         SELECT fund_code, fund_name, nav, shares, base_amount,
-               ROUND(shares * nav, 2) as asset,
-               ROUND(shares * nav - base_amount, 2) as profit
+               ROUND(shares * nav, 2) as asset, ROUND(shares * nav - base_amount, 2) as profit
         FROM fund_holdings ORDER BY profit ASC
     """)
     holdings = cursor.fetchall()
     
     for code, name, nav, shares, base, asset, profit in holdings:
-        is_qdii = code in QDII_FUNDS
+        is_qdii = code in qdii_funds
         
-        # 根据基金类型选择净值日期
         today_nav_date = qdii_today if is_qdii else normal_today
         prev_nav_date = qdii_prev if is_qdii else normal_prev
         
-        # 获取今日净值
         cursor.execute("SELECT nav FROM fund_nav_history WHERE fund_code = ? AND nav_date = ?", (code, today_nav_date))
         today_nav_row = cursor.fetchone()
         today_nav = today_nav_row[0] if today_nav_row else nav
         
-        # 获取昨日净值
         cursor.execute("SELECT nav FROM fund_nav_history WHERE fund_code = ? AND nav_date = ?", (code, prev_nav_date))
         prev_nav_row = cursor.fetchone()
         prev_nav = prev_nav_row[0] if prev_nav_row else today_nav
         
-        # 获取一周前、一月前净值
         cursor.execute("SELECT nav FROM fund_nav_history WHERE fund_code = ? AND nav_date = ?", (code, week_ago))
         week_nav_row = cursor.fetchone()
         week_nav = week_nav_row[0] if week_nav_row else today_nav
@@ -196,10 +151,7 @@ def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev
         month_nav_row = cursor.fetchone()
         month_nav = month_nav_row[0] if month_nav_row else today_nav
         
-        # 当日盈亏
         today_profit = shares * (today_nav - prev_nav)
-        
-        # 涨跌幅
         daily_pct = (today_nav - prev_nav) / prev_nav * 100 if prev_nav else 0
         week_pct = (today_nav - week_nav) / week_nav * 100 if week_nav else 0
         month_pct = (today_nav - month_nav) / month_nav * 100 if month_nav else 0
@@ -218,41 +170,26 @@ def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev
     
     return result, total_base, total_asset, total_profit, total_today
 
-def get_recent_trades(cursor, days=7):
-    """获取近N天已确认交易"""
-    cursor.execute("""
-        SELECT confirm_date, fund_code, trade_type, amount, is_shares
-        FROM fund_trades 
-        WHERE status = 'CONFIRMED' AND confirm_date >= date('now', ?)
-        ORDER BY confirm_date DESC
-    """, (f'-{days} days',))
-    return cursor.fetchall()
-
 def generate_report():
     """生成完整报告"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
+    qdii_funds = get_qdii_funds(conn)
     report_date = get_report_date(cursor)
-    normal_today, normal_prev, qdii_today, qdii_prev = get_nav_dates(cursor, report_date)
-    
-    summary = get_summary(cursor, normal_today, normal_prev, qdii_today, qdii_prev)
-    holdings, total_base, total_asset, total_profit, total_today = get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev)
-    trades = get_recent_trades(cursor)
+    normal_today, normal_prev, qdii_today, qdii_prev = get_nav_dates(cursor, report_date, qdii_funds)
+    summary = get_summary(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds)
+    holdings, total_base, total_asset, total_profit, total_today = get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds)
     
     conn.close()
     
     date_str = f"{report_date[:4]}-{report_date[4:6]}-{report_date[6:8]}"
     
-    # 生成CSV内容
     csv_content = io.StringIO()
     writer = csv.writer(csv_content)
     
-    # 标题
     writer.writerow([f'基金持仓报告 - {date_str}'])
     writer.writerow([])
-    
-    # 汇总
     writer.writerow(['[汇总]'])
     writer.writerow(['持仓本金', summary['total_base']])
     writer.writerow(['总资产', summary['total_asset']])
@@ -264,36 +201,17 @@ def generate_report():
     writer.writerow(['清仓盈亏', summary['closed_profit']])
     writer.writerow([])
     
-    # 持仓明细
     writer.writerow(['[持仓明细]'])
     writer.writerow(['代码', '名称', '净值', '份额', '本金', '资产', '盈亏', '当日盈亏', '昨日涨跌', '近一周涨跌', '近一月涨跌'])
     
     for h in holdings:
         writer.writerow([
             h['code'], h['name'], h['nav'], round(h['shares'], 2), h['base'],
-            h['asset'], h['profit'],
-            f"{h['today_profit']:+.2f}",
-            f"{h['daily_pct']:+.2f}%",
-            f"{h['week_pct']:+.2f}%",
-            f"{h['month_pct']:+.2f}%"
+            h['asset'], h['profit'], f"{h['today_profit']:+.2f}",
+            f"{h['daily_pct']:+.2f}%", f"{h['week_pct']:+.2f}%", f"{h['month_pct']:+.2f}%"
         ])
     
-    # 合计行
     writer.writerow(['合计', '', '', '', round(total_base, 2), round(total_asset, 2), round(total_profit, 2), f"{total_today:+.2f}", '', '', ''])
-    writer.writerow([])
-    
-    # 已确认交易
-    writer.writerow(['[已确认交易（近7天）]'])
-    writer.writerow(['确认日期', '代码', '操作', '数量'])
-    
-    for confirm_date, code, trade_type, amount, is_shares in trades:
-        if trade_type == 'SELL':
-            qty = f"{amount}份" if is_shares else f"{amount:.2f}元"
-            op = '减仓'
-        else:
-            qty = f"{amount:.2f}元"
-            op = '定投' if amount <= 100 else '加仓'
-        writer.writerow([confirm_date, code, op, qty])
     
     return csv_content.getvalue(), date_str
 
@@ -322,8 +240,6 @@ def send_email(subject, csv_content, date_str):
 def main():
     csv_content, date_str = generate_report()
     send_email(f'基金持仓报告 - {date_str}', csv_content, date_str)
-    print("\n报告内容:")
-    print(csv_content[:3000])
 
 if __name__ == '__main__':
     main()
