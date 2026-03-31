@@ -388,6 +388,10 @@ def update_pending_navs():
         cursor.execute("UPDATE strategy_trades SET nav = ?, shares = ?, status = 'CONFIRMED' WHERE id = ?", (nav, shares, trade_id))
         cursor.execute("UPDATE strategy_positions SET last_nav = ? WHERE fund_code = ?", (nav, fund_code))
         
+        # 如果是进入网格模式，更新grid_base_nav
+        if trigger_reason in ['进入网格', '赎回'] or '建仓期卖出' in trigger_reason:
+            cursor.execute("UPDATE strategy_positions SET grid_base_nav = ?, phase = 'GRID' WHERE fund_code = ?", (nav, fund_code))
+        
         updated += 1
     
     conn.commit()
