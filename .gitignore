@@ -1,0 +1,14 @@
+# 记忆文件（不同步到GitHub）
+MEMORY.md
+memory/
+
+# 日志文件
+logs/
+*.log
+
+# 缓存
+__pycache__/
+*.pyc
+
+# 临时文件
+*.tar.gz
