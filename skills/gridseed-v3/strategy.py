@@ -9,11 +9,12 @@ import sqlite3
 import tushare as ts
 from datetime import datetime, timedelta
 import os
+import sys
 import requests
 
-TS_TOKEN = '7b81c3a430995f2912509eea6e5932513760cf170626110a440c497c'
-FUND_DB = '/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db'
-GRID_DB = '/root/.openclaw/workspace-coder/skills/gridseed-v3/data/gridseed.db'
+# 添加父目录到路径，支持导入config
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import TS_TOKEN, FUND_DB, GRID_DB, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 
 # 缓存交易日历
 _trade_calendars = {}
@@ -110,20 +111,8 @@ def get_phase(grid_base_nav):
 def send_telegram(message):
     """发送 Telegram 消息"""
     try:
-        token = os.environ.get('TELEGRAM_BOT_TOKEN')
-        chat_id = os.environ.get('TELEGRAM_CHAT_ID')
-        
-        if not token or not chat_id:
-            config_path = '/root/.openclaw/workspace-coder/telegram_config.txt'
-            if os.path.exists(config_path):
-                with open(config_path) as f:
-                    for line in f:
-                        if '=' in line:
-                            key, value = line.strip().split('=', 1)
-                            if key == 'token':
-                                token = value
-                            elif key == 'chat_id':
-                                chat_id = value
+        token = TELEGRAM_TOKEN
+        chat_id = TELEGRAM_CHAT_ID
         
         if not token or not chat_id:
             print(f"[Telegram] 未配置，消息: {message[:50]}...")
@@ -367,6 +356,10 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
         "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, shares, nav, trigger_reason, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (fund_code, trade_date, trade_type, amount, shares, nav, trigger_reason, status)
     )
+    
+    # 如果是进入网格模式，更新grid_base_nav
+    if trigger_reason in ['进入网格', '赎回'] or '建仓期卖出' in trigger_reason:
+        cursor.execute("UPDATE strategy_positions SET grid_base_nav = ?, phase = 'GRID' WHERE fund_code = ?", (nav, fund_code))
     
     conn.commit()
     conn.close()

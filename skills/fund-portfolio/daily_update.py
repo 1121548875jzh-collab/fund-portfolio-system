@@ -18,9 +18,11 @@ import sqlite3
 import tushare as ts
 from datetime import datetime, timedelta
 import os
+import sys
 
-TS_TOKEN = '7b81c3a430995f2912509eea6e5932513760cf170626110a440c497c'
-DB_PATH = '/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db'
+# 添加父目录到路径，支持导入config
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import TS_TOKEN, FUND_DB
 
 def get_qdii_funds(conn):
     """从数据库获取QDII基金列表"""
@@ -135,7 +137,6 @@ def confirm_pending_trades(conn, pro):
                     (new_shares, new_base, fund_code))
                 fund_name = row[2]
             else:
-                # 获取基金名称
                 cursor.execute('SELECT fund_name FROM fund_holdings WHERE fund_code = ?', (fund_code,))
                 fund_name_row = cursor.fetchone()
                 fund_name = fund_name_row[0] if fund_name_row else fund_code
@@ -239,11 +240,11 @@ def generate_snapshot(conn, pro):
 def main():
     print(f"=== 基金每日更新 {datetime.now().strftime('%Y-%m-%d %H:%M')} ===")
     
-    if not os.path.exists(DB_PATH):
+    if not os.path.exists(FUND_DB):
         print("数据库不存在")
         return
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(FUND_DB)
     pro = ts.pro_api(TS_TOKEN)
     
     try:

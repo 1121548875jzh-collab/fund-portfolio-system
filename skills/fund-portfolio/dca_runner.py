@@ -11,8 +11,11 @@
 import sqlite3
 from datetime import datetime
 import os
+import sys
 
-DB_PATH = '/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db'
+# 添加父目录到路径，支持导入config
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import FUND_DB
 
 def get_dca_config(conn):
     """从数据库读取定投配置"""
@@ -32,11 +35,11 @@ def run_dca():
     
     print(f"=== 定投执行 {today.strftime('%Y-%m-%d %A')} ===")
     
-    if not os.path.exists(DB_PATH):
+    if not os.path.exists(FUND_DB):
         print("数据库不存在")
         return
     
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(FUND_DB)
     cursor = conn.cursor()
     
     # 从数据库读取配置

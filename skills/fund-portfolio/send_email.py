@@ -16,16 +16,12 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 from datetime import datetime, timedelta
+import os
+import sys
 
-DB_PATH = '/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db'
-
-SMTP_SERVER = 'smtp.gmail.com'
-SMTP_PORT = 587
-SMTP_USER = '1121548875jzh@gmail.com'
-SMTP_PASSWORD = 'vfdoetqursseoase'
-TO_EMAIL = '1121548875jzh@gmail.com'
-
-BASE_DATE = '2026-03-14'
+# 添加父目录到路径，支持导入config
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import SMTP_SERVER, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, TO_EMAIL, BASE_DATE, FUND_DB
 
 def get_qdii_funds(conn):
     """从数据库获取QDII基金列表"""
@@ -182,7 +178,7 @@ def get_recent_trades(cursor, days=7):
 
 def generate_report():
     """生成完整报告"""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(FUND_DB)
     cursor = conn.cursor()
     
     qdii_funds = get_qdii_funds(conn)

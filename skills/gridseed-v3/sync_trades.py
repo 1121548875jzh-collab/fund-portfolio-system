@@ -14,12 +14,11 @@ import sqlite3
 import tushare as ts
 from datetime import datetime
 import os
+import sys
 
-TS_TOKEN = '7b81c3a430995f2912509eea6e5932513760cf170626110a440c497c'
-FUND_DB = '/root/.openclaw/workspace-coder/skills/fund-portfolio/fund_portfolio.db'
-GRID_DB = '/root/.openclaw/workspace-coder/skills/gridseed-v3/data/gridseed.db'
-
-QDII_FUNDS = ['012062', '017641', '017437', '017091']
+# 添加父目录到路径，支持导入config
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from config import TS_TOKEN, FUND_DB, GRID_DB
 
 def get_nav(pro, fund_code, trade_date):
     """获取交易日净值"""
