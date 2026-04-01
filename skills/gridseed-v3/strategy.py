@@ -284,7 +284,7 @@ def run_check(send_msg=True):
     
     return actions
 
-def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None, nav=None):
+def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None, nav=None, trigger_reason_override=None):
     """记录手动操作"""
     if trade_date is None:
         trade_date = datetime.now().strftime('%Y-%m-%d')
@@ -309,35 +309,49 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
     fund_name, step, total_cost, total_shares, grid_base_nav = pos
     phase = get_phase(grid_base_nav)
     
+    is_confirmed = False
+    
     if not nav:
-        nav = get_nav(pro, fund_code, trade_date)
-        if not nav:
-            nav = get_nav(pro, fund_code)
+        nav_result = get_nav(pro, fund_code, trade_date)
+        if nav_result is not None:
+            nav = nav_result
+            is_confirmed = True
+        else:
+            fallback = get_nav(pro, fund_code)
+            if fallback:
+                nav = fallback[0]
+            else:
+                nav = None
+            is_confirmed = False
+    else:
+        # 如果手动传递了 nav，则认为是估算净值（暂不计为确认态，防止写入错误单价）
+        is_confirmed = False
     
     if not shares and nav:
         shares = amount / nav
     
     if trade_type == 'BUY':
         if phase == 'ACCUMULATION':
-            trigger_reason = f'L{step+1}加仓'
-            new_step = step + 1
+            trigger_reason = trigger_reason_override or f'L{step+1}加仓'
+            # 闲置唤醒不增加 step
+            new_step = step if '唤醒' in trigger_reason else step + 1
         else:
-            trigger_reason = '网格买入'
+            trigger_reason = trigger_reason_override or '网格买入'
             new_step = step
-            # 网格买入：写入 grid_batches 表
-            if shares and nav:
+            # 网格买入：仅当确认为真实净值时，此时才写入 grid_batches 表
+            if is_confirmed and shares and nav:
                 cursor.execute('''
                     INSERT INTO grid_batches (fund_code, buy_date, amount, shares, nav, status)
                     VALUES (?, ?, ?, ?, ?, 'HELD')
                 ''', (fund_code, trade_date, amount, shares, nav))
     else:
         if phase == 'ACCUMULATION':
-            trigger_reason = '建仓期卖出'
+            trigger_reason = trigger_reason_override or '建仓期卖出'
             cursor.execute("UPDATE strategy_positions SET grid_base_nav = ? WHERE fund_code = ?", (nav, fund_code))
         else:
-            trigger_reason = '网格卖出'
-            # 网格卖出：更新 grid_batches 状态
-            if shares and nav:
+            trigger_reason = trigger_reason_override or '网格卖出'
+            # 网格卖出：同理，确认为真实净值时才更新
+            if is_confirmed and shares and nav:
                 cursor.execute('''
                     UPDATE grid_batches 
                     SET status = 'SOLD', sell_date = ?, sell_nav = ?, profit = ?
@@ -351,7 +365,7 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
         (trade_date, trigger_reason, amount, new_step, datetime.now().strftime('%Y-%m-%d %H:%M'), fund_code)
     )
     
-    status = 'CONFIRMED' if nav else 'PENDING_NAV'
+    status = 'CONFIRMED' if is_confirmed else 'PENDING_NAV'
     cursor.execute(
         "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, shares, nav, trigger_reason, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (fund_code, trade_date, trade_type, amount, shares, nav, trigger_reason, status)
@@ -364,7 +378,7 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
     conn.commit()
     conn.close()
     
-    return True, f"{fund_code} {fund_name}: {trigger_reason} {amount}元，监督点更新至 {trade_date}"
+    return True, f"{fund_code} {fund_name}: {trigger_reason} {amount}元，状态: {status}，监督点更新"
 
 def update_pending_navs():
     """更新待补充净值的交易记录"""
@@ -400,8 +414,22 @@ def update_pending_navs():
         cursor.execute("UPDATE strategy_positions SET last_nav = ? WHERE fund_code = ?", (nav, fund_code))
         
         # 如果是进入网格模式，更新grid_base_nav
-        if trigger_reason in ['进入网格', '赎回'] or '建仓期卖出' in trigger_reason:
+        if trigger_reason in ['进入网格', '赎回'] or (trigger_reason and '建仓期卖出' in trigger_reason):
             cursor.execute("UPDATE strategy_positions SET grid_base_nav = ?, phase = 'GRID' WHERE fund_code = ?", (nav, fund_code))
+            
+        # 补充：确认净值后，将网格批次数据正式写入或更新
+        if trigger_reason and '网格买入' in trigger_reason:
+            cursor.execute('''
+                INSERT INTO grid_batches (fund_code, buy_date, amount, shares, nav, status)
+                VALUES (?, ?, ?, ?, ?, 'HELD')
+            ''', (fund_code, trade_date, amount, shares, nav))
+        elif trigger_reason and '网格卖出' in trigger_reason:
+            cursor.execute('''
+                UPDATE grid_batches 
+                SET status = 'SOLD', sell_date = ?, sell_nav = ?, profit = ?
+                WHERE fund_code = ? AND status = 'HELD'
+                ORDER BY buy_date LIMIT 1
+            ''', (trade_date, nav, shares * nav - amount, fund_code))
         
         updated += 1
     
@@ -427,9 +455,10 @@ if __name__ == '__main__':
             fund_code = sys.argv[2]
             trade_type = sys.argv[3]
             amount = float(sys.argv[4])
-            success, msg = record_operation(fund_code, trade_type, amount)
+            trigger_reason_override = sys.argv[5] if len(sys.argv) >= 6 else None
+            success, msg = record_operation(fund_code, trade_type, amount, trigger_reason_override=trigger_reason_override)
             print(msg)
         else:
-            print("用法: python strategy.py [check|check_silent|update_navs|record <code> <BUY|SELL> <amount>]")
+            print("用法: python strategy.py [check|check_silent|update_navs|record <code> <BUY|SELL> <amount> [reason]]")
     else:
         run_check()

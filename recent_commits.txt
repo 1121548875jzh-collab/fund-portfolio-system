@@ -1,0 +1,333 @@
+﻿commit b73534604eceb9446bfd0338c5c0bac78a9f8acf
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 12:02:00 2026 +0800
+
+    fix: 018957 涓埅鏈洪亣棰嗚埅 淇涓洪棽缃敜閱掑姞浠?    
+    - step淇濇寔0锛堥棽缃敜閱掍笉澧炲姞step锛?    - last_action: L1鍔犱粨 鈫?闂茬疆鍞ら啋
+
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 118930ede731eb73ca46e8efe3caaac453308d8b
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 11:59:55 2026 +0800
+
+    feat: 018957 涓埅鏈洪亣棰嗚埅 鍔犱粨100鍏?(L0鈫扡1)
+
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit b14f436b6cbe76f372090b862d6111779d99d10e
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 11:22:38 2026 +0800
+
+    feat: 022287 闀垮煄鍖昏嵂浜т笟绮鹃€塁 鍔犱粨100鍏?(L1鈫扡2)
+
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 8d07bad1c3ed8ef6e458e5812aa67cee44eeab2d
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 10:06:55 2026 +0800
+
+    refactor: 缁熶竴閰嶇疆绠＄悊锛屾秷闄ょ‖缂栫爜
+    
+    鏀归€犲唴瀹?
+    - 鏂板 skills/config.py 缁熶竴閰嶇疆
+    - 鎵€鏈夎剼鏈粠config.py瀵煎叆閰嶇疆
+    
+    鏀归€犳枃浠?
+    - daily_update.py: FUND_DB, TS_TOKEN
+    - send_email.py: SMTP閰嶇疆, FUND_DB
+    - dca_runner.py: FUND_DB
+    - strategy.py: FUND_DB, GRID_DB, TS_TOKEN, Telegram閰嶇疆
+    - sync_trades.py: FUND_DB, GRID_DB, TS_TOKEN
+    
+    浼樺娍:
+    1. 鏁忔劅淇℃伅闆嗕腑绠＄悊
+    2. Windows/Linux鑷姩閫傞厤璺緞
+    3. 淇敼閰嶇疆鍙渶鏀逛竴澶?
+M	skills/config.py
+M	skills/fund-portfolio/daily_update.py
+M	skills/fund-portfolio/dca_runner.py
+M	skills/fund-portfolio/send_email.py
+M	skills/gridseed-v3/strategy.py
+M	skills/gridseed-v3/sync_trades.py
+
+commit ef9efdc4a3fff65a2d8a2cb0bc9903a244338782
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 09:55:26 2026 +0800
+
+    fix: 淇GridSeed鏍稿績闂
+    
+    P0 - 缃戞牸鎵规鍐欏叆:
+    - 缃戞牸涔板叆鏃跺啓鍏rid_batches琛?    - 缃戞牸鍗栧嚭鏃舵洿鏂癵rid_batches鐘舵€佷负SOLD
+    - 琛ュ厖019924鍘嗗彶缃戞牸鎵规璁板綍
+    
+    P2 - 缃戞牸鏈熷績璺?
+    - 缃戞牸闃舵鍙栨秷蹇冭烦鏈哄埗妫€鏌?    
+    P1 - 閰嶇疆缁熶竴:
+    - 鏂板 skills/config.py 缁熶竴閰嶇疆
+    - TS_TOKEN/SMTP/Telegram閰嶇疆闆嗕腑绠＄悊
+    
+    淇鍚庣綉鏍间氦鏄撳姛鑳藉彲姝ｅ父杩愪綔
+
+A	skills/config.py
+M	skills/gridseed-v3/data/gridseed.db
+M	skills/gridseed-v3/strategy.py
+
+commit 7637e1ea562ed350ca881abc0ebcefe66143d4c3
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 09:42:34 2026 +0800
+
+    fix: 淇step閲嶅鏇存柊闂
+    
+    闂锛氭墜鍔ㄥ姞浠?+ sync_trades鍚屾瀵艰嚧step琚洿鏂颁袱娆?    鍘熷洜锛歳ecord_operation鏇存柊浜唖tep锛宻ync_trades鍙堟洿鏂颁簡涓€娆?    
+    淇锛?    1. sync_trades澧炲姞妫€鏌ワ細璺宠繃宸插瓨鍦ㄧ殑浜ゆ槗璁板綍
+    2. 淇褰撳墠鏁版嵁锛?       - 001665: step 3鈫?, 琛ュ厖L2鍔犱粨璁板綍
+       - 007040: step 3鈫?, 琛ュ厖L2鍔犱粨璁板綍
+       - 020629: step 4鈫?, 淇L3鍔犱粨璁板綍
+    
+    瑙勫垯锛氭瘡娆″姞浠搒tep鍙鍔?绾?
+M	skills/gridseed-v3/data/gridseed.db
+M	skills/gridseed-v3/sync_trades.py
+
+commit 11c0714e510106742b8e4ad8e62731e7af9720e1
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 09:16:01 2026 +0800
+
+    fix: 淇閭欢鎶ュ憡鍜孏ridSeed鎻愰啋
+    
+    閭欢鎶ュ憡:
+    - 鏂板宸茬‘璁や氦鏄撳垪琛紙杩?澶╋級
+    - 淇鏄ㄦ棩鐩堜簭璁＄畻锛堣ˉ鍏?/30蹇収锛?    
+    GridSeed鎻愰啋:
+    - 鏃犳搷浣滄椂涔熷彂閫乀elegram鎻愰啋
+    - 鍒犻櫎閲嶅浜ゆ槗璁板綍
+    
+    鏁版嵁淇:
+    - 琛ュ厖3/30蹇収鏁版嵁
+    - 鍒犻櫎strategy_trades閲嶅璁板綍
+
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/fund-portfolio/send_email.py
+M	skills/gridseed-v3/data/gridseed.db
+M	skills/gridseed-v3/strategy.py
+
+commit f703d03c59b88ba41c0023396420763b1f41c148
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 08:47:40 2026 +0800
+
+    fix: 淇016874鍩洪噾鍚嶇О
+
+M	skills/fund-portfolio/fund_portfolio.db
+
+commit 579de8638c402e0d1802d1074b537578d7ef2bc8
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 14:57:09 2026 +0800
+
+    feat: GridSeed鍔犱粨鎿嶄綔
+    
+    - 001665 骞冲畨閼畨 +90鍏?(L1鈫扡2, 璺?.07%)
+    - 007040 鍓嶆捣鑱斿悎娉抽殕 +120鍏?(L1鈫扡2, 璺?.02%)
+    - 020629 姹囨坊瀵岀鍒涙澘鑺墖 +110鍏?(L2鈫扡3, 璺?.58%)
+    
+    last_nav寰呮槑鏃?:28琛ュ厖3/31鍑€鍊?
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 2d841605c7eca43f5543e3e2787f651b2d89cbb1
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 14:06:45 2026 +0800
+
+    chore: 鍚屾浠婃棩鍩洪噾浜ゆ槗璁板綍鍒版暟鎹簱
+    
+    - 瀹氭姇: 7鍙熀閲戝懆浜屽畾鎶?50鍏?    - 鏂板: 016874寤轰粨200鍏?    - 闂茬疆鍞ら啋: 013180鍔犱粨100鍏?    - 娓呬粨: 013596鍗栧嚭252.27浠?    - 璧庡洖: 015790鍗栧嚭71.65浠?
+M	skills/fund-portfolio/fund_portfolio.db
+
+commit 8238f329a3fb71ef0042feae90ac9e9338cc6110
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 14:05:20 2026 +0800
+
+    fix: 淇杩涘叆缃戞牸妯″紡鐨勫噣鍊奸€昏緫
+    
+    - grid_base_nav璁句负NULL锛岀瓑鏄庢棩鍑€鍊肩‘璁?    - update_navs澧炲姞閫昏緫锛歵rigger_reason鍚?杩涘叆缃戞牸'鏃舵洿鏂癵rid_base_nav
+    - 鍒涘缓'杩涘叆缃戞牸'浜ゆ槗璁板綍锛屾槑鏃ヨ嚜鍔ㄦ洿鏂板熀鍑嗗噣鍊?    
+    姝ｇ‘娴佺▼锛?    鎿嶄綔鏃? grid_base_nav=NULL
+    闅旀棩8:28: update_navs琛ュ厖鍑€鍊硷紝璁剧疆grid_base_nav
+
+M	skills/gridseed-v3/data/gridseed.db
+M	skills/gridseed-v3/strategy.py
+
+commit 3320da36047296d23e90963eae0e52c2ecc72eba
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 13:51:05 2026 +0800
+
+    feat: 015790 姘歌耽楂樼瑁呭杩涘叆缃戞牸妯″紡
+    
+    - phase: ACCUMULATION 鈫?GRID
+    - grid_base_nav: 1.3873
+    - 缃戞牸瑙勫垯: 璺屸墺3%涔板叆100鍏冿紝娑ㄢ墺10%鍗栧嚭
+
+M	skills/gridseed-v3/data/gridseed.db
+
+commit f2ebe7e7502f33403e682bc36e60658053cff56e
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 13:50:09 2026 +0800
+
+    feat: 015790 姘歌耽楂樼瑁呭璧庡洖71.65浠?    
+    - 3/24涔板叆96鍏?71.65浠?锛屼粖鏃ュ崠鍑?    - 浠介鍗栧嚭锛岀瓑鏄庢棩鍑€鍊肩‘璁よ绠楅噾棰?    - 浼扮畻鏀剁泭绾?5鍏?
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 006abca631bc44f84793410e4bab7de42b02cb00
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 13:43:12 2026 +0800
+
+    docs: 鏇存柊GridSeed鐩戞帶鍩洪噾鍒楄〃锛堢Щ闄?13596锛?5鍙級
+    
+    - 013596 鎷涘晢涓瘉鐓ょ偔C宸叉竻浠?
+M	skills/gridseed-v3/SKILL.md
+
+commit 43f1ef3159db5c313cb1cf76fa2f249a0d755aa7
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 13:42:28 2026 +0800
+
+    fix: 淇娓呬粨閫昏緫 - 鍗栧嚭鏃跺彧璁板綍浠介
+    
+    - 鍗栧嚭浜ゆ槗鍙褰曚唤棰濓紝绛夊噣鍊煎嚭鏉ュ悗纭閲戦
+    - 娓呬粨鏃惰嚜鍔ㄨ褰曠泩浜忓埌closed_position_profit
+    - QDII鍩洪噾鍒楄〃浠庢暟鎹簱璇诲彇
+    - fund_trades澧炲姞is_shares瀛楁鏀寔浠介鍗栧嚭
+    
+    褰撳墠013596鐘舵€侊細
+    - fund_holdings: 252.27浠?    - fund_trades: SELL 252.27浠?PENDING
+    - 鏄庢棩鍑€鍊肩‘璁ゅ悗璁＄畻瀹為檯閲戦
+
+M	skills/fund-portfolio/daily_update.py
+M	skills/fund-portfolio/fund_portfolio.db
+
+commit 6e21ed3f91b1f5e6d102afbbaa88cd9e5c4be98b
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 13:38:54 2026 +0800
+
+    feat: 013596 鎷涘晢涓瘉鐓ょ偔C 娓呬粨
+    
+    - 鍙栨秷浠婃棩闂茬疆鍞ら啋鍔犱粨50鍏?    - 鍏ㄩ儴娓呬粨252.27浠?    - 娓呬粨鐩堜簭: +68.94鍏?    - 浠嶨ridSeed鐩戞帶鍒楄〃绉婚櫎
+
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 552841a836ae2c2dc261e3e1d2add54ca40f5c27
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 11:30:53 2026 +0800
+
+    revert: 鎾ゅ洖015790姘歌耽楂樼瑁呭鍔犱粨100鍏?
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 0431288c903f51f0111d177de8dc7a526b5340b2
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 09:42:56 2026 +0800
+
+    feat: 015790 姘歌耽楂樼瑁呭鍔犱粨100鍏?
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 8eb306ec83791eb3da08af197096d98b4f3476e4
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 09:29:03 2026 +0800
+
+    chore: 娣诲姞.gitignore蹇界暐璁板繂鍜屾棩蹇楁枃浠?
+A	.gitignore
+
+commit 220204649e68660552ba935d3412882638e5a2f9
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 09:06:07 2026 +0800
+
+    refactor: 閰嶇疆鏁版嵁搴撳寲鏀归€?    
+    - dca_runner.py: 瀹氭姇閰嶇疆浠巇ca_config琛ㄨ鍙?    - strategy.py: 绛栫暐鍙傛暟浠巗trategy_params琛ㄨ鍙?    - send_email.py: QDII鍩洪噾鍒楄〃浠巇ca_config.is_qdii璇诲彇
+    - 鏂板init_config_db.py: 鍒濆鍖栭厤缃〃
+    
+    閰嶇疆琛ㄧ幇鍦ㄥ瓨鍌?
+    - dca_config: 瀹氭姇鍩洪噾銆侀噾棰濄€丵DII鏍囪
+    - strategy_params: 闃堝€笺€佹瘮渚嬬瓑绛栫暐鍙傛暟
+    
+    淇敼閰嶇疆鍙渶鏀规暟鎹簱锛屾棤闇€鏀逛唬鐮?
+M	skills/fund-portfolio/dca_runner.py
+M	skills/fund-portfolio/fund_portfolio.db
+A	skills/fund-portfolio/init_config_db.py
+M	skills/fund-portfolio/send_email.py
+M	skills/gridseed-v3/data/gridseed.db
+M	skills/gridseed-v3/strategy.py
+
+commit 1f62aeadf98355b7d474314a1a11542391e624fd
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 08:52:49 2026 +0800
+
+    feat: GridSeed闂茬疆鍞ら啋鍔犱粨
+    
+    - 013180 鏂拌兘婧愯溅鐢垫睜 +100鍏?(闂茬疆鍞ら啋)
+    - 013596 鐓ょ偔 +50鍏?(闂茬疆鍞ら啋)
+    - step淇濇寔涓嶅彉锛堥棽缃敜閱掍笉澧炲姞step锛?    - last_nav寰呮槑鏃?:28琛ュ厖3/31鍑€鍊?
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 7ab08667022309ed3b2ff12e3e961a33f3db19d3
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 08:51:51 2026 +0800
+
+    fix: 淇016874鐩戞帶鐐瑰噣鍊奸€昏緫
+    
+    - last_nav璁句负NULL锛屽緟鏄庢棩8:28 update_navs琛ュ厖3/31鍑€鍊?    - 鍒涘缓strategy_trades璁板綍锛岀姸鎬丳ENDING_NAV
+    - 姝ｇ‘娴佺▼锛氭搷浣滄棩last_date绔嬪嵆鏇存柊锛宭ast_nav闅旀棩琛ュ厖
+
+M	skills/gridseed-v3/data/gridseed.db
+
+commit f211cd8ed7e6928a0ecc440c6628d16cd65280be
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Tue Mar 31 08:49:24 2026 +0800
+
+    feat: 鏂板GridSeed鐩戞帶鍩洪噾 016874 骞垮彂杩滆鏅洪€夋贩鍚圕
+    
+    - 鍔犱粨200鍏冿紝寤轰粨鏈焥tep=0
+    - 鐩戞帶鐐瑰噣鍊? 1.5692
+    - 鏇存柊SKILL.md鐩戞帶鍩洪噾鍒楄〃(16鍙?
+
+A	memory/2026-03-31.md
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/SKILL.md
+M	skills/gridseed-v3/data/gridseed.db
+
+commit ab55d0d4ddbe94b16e385f3f608ba17781aedcf2
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Mon Mar 30 18:44:29 2026 +0800
+
+    feat: 娣诲姞鍩洪噾鏁版嵁搴揌TTP API + 鏇存柊浠撳簱鍦板潃璁板繂
+    
+    - 鏂板 api_server.py: Flask HTTP API瀹炴椂鏌ヨ
+    - 鎺ュ彛: /holdings /summary /trades /snapshot /gridseed/positions
+    - 鏇存柊 MEMORY.md: 璁板綍GitHub浠撳簱鍦板潃
+
+M	MEMORY.md
+A	skills/fund-portfolio/api_server.py
+
+commit 04287cebcdff688f3ac5063ae62b3507fdfd091e
+Author: Jarvis <jarvis@openclaw.local>
+Date:   Mon Mar 30 17:55:39 2026 +0800
+
+    chore: 娣诲姞self-improving-agent skill锛屽噯澶囦唬鐮乺eview
+
+A	.clawhub/lock.json
+A	memory/evomap_recommendations.md
+A	scripts/agent_introspection.py
+A	scripts/async_pool.py
+A	scripts/circuit_breaker.py
+A	scripts/reconnect.py
+A	skills/self-improving-agent-cn/.clawhub/origin.json
+A	skills/self-improving-agent-cn/SKILL.md
+A	skills/self-improving-agent-cn/_meta.json
+A	skills/self-improving-agent-cn/check_memory.py
+A	skills/self-improving-agent-cn/log_best_practice.py
+A	skills/self-improving-agent-cn/log_correction.py
+A	skills/self-improving-agent-cn/log_error.py
+A	skills/self-improving-agent-cn/skill.json

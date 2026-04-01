@@ -1,0 +1,26 @@
+﻿commit b73534604eceb9446bfd0338c5c0bac78a9f8acf
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 12:02:00 2026 +0800
+
+    fix: 018957 涓埅鏈洪亣棰嗚埅 淇涓洪棽缃敜閱掑姞浠?    
+    - step淇濇寔0锛堥棽缃敜閱掍笉澧炲姞step锛?    - last_action: L1鍔犱粨 鈫?闂茬疆鍞ら啋
+
+M	skills/gridseed-v3/data/gridseed.db
+
+commit 118930ede731eb73ca46e8efe3caaac453308d8b
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 11:59:55 2026 +0800
+
+    feat: 018957 涓埅鏈洪亣棰嗚埅 鍔犱粨100鍏?(L0鈫扡1)
+
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db
+
+commit b14f436b6cbe76f372090b862d6111779d99d10e
+Author: Zhihao Jiang <zhihaojiang@github>
+Date:   Wed Apr 1 11:22:38 2026 +0800
+
+    feat: 022287 闀垮煄鍖昏嵂浜т笟绮鹃€塁 鍔犱粨100鍏?(L1鈫扡2)
+
+M	skills/fund-portfolio/fund_portfolio.db
+M	skills/gridseed-v3/data/gridseed.db

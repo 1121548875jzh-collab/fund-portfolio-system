@@ -118,14 +118,25 @@ def sync_trades():
                 continue
             
             old_cost, old_shares, step, grid_base_nav = pos
+            phase = 'GRID' if grid_base_nav else 'ACCUMULATION'
             
             if trade_type == 'BUY':
                 new_cost = old_cost + amount
                 new_shares = old_shares + shares
                 
-                # 判断动作类型（根据当前step）
-                trigger_reason = f'L{step+1}加仓'
-                new_step = step + 1
+                # 判断动作类型（根据当前阶段）
+                if phase == 'GRID':
+                    trigger_reason = '网格买入'
+                    new_step = step
+                    
+                    # 写入网格批次
+                    grid_cursor.execute('''
+                        INSERT INTO grid_batches (fund_code, buy_date, amount, shares, nav, status)
+                        VALUES (?, ?, ?, ?, ?, 'HELD')
+                    ''', (fund_code, trade_date, amount, shares, nav))
+                else:
+                    trigger_reason = f'L{step+1}加仓'
+                    new_step = step + 1
                 
                 # 更新持仓
                 grid_cursor.execute(
@@ -145,17 +156,31 @@ def sync_trades():
                 new_cost = old_cost * (1 - shares / old_shares)
                 new_shares = old_shares - shares
                 
+                if phase == 'GRID':
+                    trigger_reason = '网格卖出'
+                    
+                    # 更新网格批次状态
+                    grid_cursor.execute('''
+                        UPDATE grid_batches 
+                        SET status = 'SOLD', sell_date = ?, sell_nav = ?, profit = ?
+                        WHERE fund_code = ? AND status = 'HELD'
+                        ORDER BY buy_date LIMIT 1
+                    ''', (trade_date, nav, shares * nav - amount, fund_code))
+                else:
+                    trigger_reason = '建仓期卖出'
+                    grid_cursor.execute("UPDATE strategy_positions SET grid_base_nav = ? WHERE fund_code = ?", (nav, fund_code))
+                
                 grid_cursor.execute(
                     "UPDATE strategy_positions SET total_cost = ?, total_shares = ?, last_nav = ?, last_date = ?, last_action = ?, last_amount = ?, updated_at = ? WHERE fund_code = ?",
-                    (new_cost, new_shares, nav, trade_date, 'SELL', amount, datetime.now().strftime('%Y-%m-%d %H:%M'), fund_code)
+                    (new_cost, new_shares, nav, trade_date, trigger_reason, amount, datetime.now().strftime('%Y-%m-%d %H:%M'), fund_code)
                 )
                 
                 grid_cursor.execute(
-                    "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, nav, shares, trigger_reason, status) VALUES (?, ?, 'SELL', ?, ?, ?, '卖出', 'CONFIRMED')",
-                    (fund_code, trade_date, amount, nav, shares)
+                    "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, nav, shares, trigger_reason, status) VALUES (?, ?, 'SELL', ?, ?, ?, ?, 'CONFIRMED')",
+                    (fund_code, trade_date, amount, nav, shares, trigger_reason)
                 )
                 
-                print(f"  {fund_code}: 卖出 {amount}元")
+                print(f"  {fund_code}: {trigger_reason} {amount}元")
                 synced += 1
     
     grid_conn.commit()
