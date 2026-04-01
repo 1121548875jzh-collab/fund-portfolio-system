@@ -236,8 +236,8 @@ def check_actions():
                     })
                     break
         
-        # 闲置唤醒
-        if last_date:
+        # 闲置唤醒（网格期不触发）
+        if phase != 'GRID' and last_date:
             idle_days = count_trade_days(pro, last_date, today)
             if idle_days >= idle_trade_days:
                 idle_amount = params.get('idle_wake_amount', 100)
@@ -335,12 +335,26 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
         else:
             trigger_reason = '网格买入'
             new_step = step
+            # 网格买入：写入 grid_batches 表
+            if shares and nav:
+                cursor.execute('''
+                    INSERT INTO grid_batches (fund_code, buy_date, amount, shares, nav, status)
+                    VALUES (?, ?, ?, ?, ?, 'HELD')
+                ''', (fund_code, trade_date, amount, shares, nav))
     else:
         if phase == 'ACCUMULATION':
             trigger_reason = '建仓期卖出'
             cursor.execute("UPDATE strategy_positions SET grid_base_nav = ? WHERE fund_code = ?", (nav, fund_code))
         else:
             trigger_reason = '网格卖出'
+            # 网格卖出：更新 grid_batches 状态
+            if shares and nav:
+                cursor.execute('''
+                    UPDATE grid_batches 
+                    SET status = 'SOLD', sell_date = ?, sell_nav = ?, profit = ?
+                    WHERE fund_code = ? AND status = 'HELD'
+                    ORDER BY buy_date LIMIT 1
+                ''', (trade_date, nav, shares * nav - amount, fund_code))
         new_step = step
     
     cursor.execute(
