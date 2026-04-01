@@ -5,6 +5,10 @@ GridSeed V3.0 - 交易同步
 从基金系统同步已确认的交易到 GridSeed
 
 执行时间: 8:26
+
+修复：避免重复更新step
+- 检查strategy_trades是否已有该交易
+- 如果已存在则跳过
 """
 import sqlite3
 import tushare as ts
@@ -32,9 +36,6 @@ def get_nav(pro, fund_code, trade_date):
         return float(df.iloc[0]['unit_nav'])
     except:
         return None
-
-def is_grid_phase(grid_base_nav):
-    return grid_base_nav is not None
 
 def sync_trades():
     """同步交易"""
@@ -64,6 +65,7 @@ def sync_trades():
     print(f"同步 {len(tracking)} 只基金\n")
     
     synced = 0
+    skipped = 0
     failed = []
     
     for fund_code in tracking:
@@ -89,6 +91,15 @@ def sync_trades():
         trades = fund_cursor.fetchall()
         
         for trade_date, trade_type, amount, confirm_date in trades:
+            # 检查是否已经同步过该交易
+            grid_cursor.execute(
+                "SELECT id FROM strategy_trades WHERE fund_code = ? AND trade_date = ? AND trade_type = ? AND amount = ?",
+                (fund_code, trade_date, trade_type, amount)
+            )
+            if grid_cursor.fetchone():
+                skipped += 1
+                continue
+            
             nav = get_nav(pro, fund_code, trade_date)
             if not nav:
                 failed.append({'fund_code': fund_code, 'trade_date': trade_date, 'reason': '无法获取净值'})
@@ -108,13 +119,12 @@ def sync_trades():
                 continue
             
             old_cost, old_shares, step, grid_base_nav = pos
-            is_grid = is_grid_phase(grid_base_nav)
             
             if trade_type == 'BUY':
                 new_cost = old_cost + amount
                 new_shares = old_shares + shares
                 
-                # 判断动作类型
+                # 判断动作类型（根据当前step）
                 trigger_reason = f'L{step+1}加仓'
                 new_step = step + 1
                 
@@ -154,6 +164,8 @@ def sync_trades():
     grid_conn.close()
     
     print(f"\n✅ 同步成功: {synced} 笔")
+    if skipped > 0:
+        print(f"⏭️ 跳过已存在: {skipped} 笔")
     if failed:
         print(f"❌ 同步失败: {len(failed)} 笔")
         for f in failed:
