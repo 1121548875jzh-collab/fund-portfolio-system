@@ -170,6 +170,16 @@ def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev
     
     return result, total_base, total_asset, total_profit, total_today
 
+def get_recent_trades(cursor, days=7):
+    """获取近N天已确认交易"""
+    cursor.execute("""
+        SELECT confirm_date, fund_code, trade_type, amount, is_shares
+        FROM fund_trades 
+        WHERE status = 'CONFIRMED' AND confirm_date >= date('now', ?)
+        ORDER BY confirm_date DESC
+    """, (f'-{days} days',))
+    return cursor.fetchall()
+
 def generate_report():
     """生成完整报告"""
     conn = sqlite3.connect(DB_PATH)
@@ -180,6 +190,7 @@ def generate_report():
     normal_today, normal_prev, qdii_today, qdii_prev = get_nav_dates(cursor, report_date, qdii_funds)
     summary = get_summary(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds)
     holdings, total_base, total_asset, total_profit, total_today = get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds)
+    trades = get_recent_trades(cursor)
     
     conn.close()
     
@@ -190,6 +201,8 @@ def generate_report():
     
     writer.writerow([f'基金持仓报告 - {date_str}'])
     writer.writerow([])
+    
+    # 汇总
     writer.writerow(['[汇总]'])
     writer.writerow(['持仓本金', summary['total_base']])
     writer.writerow(['总资产', summary['total_asset']])
@@ -201,6 +214,7 @@ def generate_report():
     writer.writerow(['清仓盈亏', summary['closed_profit']])
     writer.writerow([])
     
+    # 持仓明细
     writer.writerow(['[持仓明细]'])
     writer.writerow(['代码', '名称', '净值', '份额', '本金', '资产', '盈亏', '当日盈亏', '昨日涨跌', '近一周涨跌', '近一月涨跌'])
     
@@ -212,6 +226,20 @@ def generate_report():
         ])
     
     writer.writerow(['合计', '', '', '', round(total_base, 2), round(total_asset, 2), round(total_profit, 2), f"{total_today:+.2f}", '', '', ''])
+    writer.writerow([])
+    
+    # 已确认交易
+    writer.writerow(['[已确认交易（近7天）]'])
+    writer.writerow(['确认日期', '代码', '操作', '数量'])
+    
+    for confirm_date, code, trade_type, amount, is_shares in trades:
+        if trade_type == 'SELL':
+            qty = f"{amount}份" if is_shares else f"{amount:.2f}元"
+            op = '减仓'
+        else:
+            qty = f"{amount:.2f}元"
+            op = '定投' if amount <= 100 else '加仓'
+        writer.writerow([confirm_date, code, op, qty])
     
     return csv_content.getvalue(), date_str
 

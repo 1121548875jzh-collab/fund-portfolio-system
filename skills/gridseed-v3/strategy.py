@@ -259,6 +259,10 @@ def run_check(send_msg=True):
     
     if not actions:
         print("无操作建议")
+        # 即使无操作也发送提醒
+        if send_msg:
+            msg = f"<b>GridSeed V3.0 检查</b>\n<code>\n✅ 无操作建议\n\n所有基金涨跌幅正常\n闲置提醒: 无\n</code>"
+            send_telegram(msg)
         return []
     
     print(f"触发操作: {len(actions)} 只\n")
