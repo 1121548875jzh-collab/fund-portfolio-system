@@ -23,6 +23,7 @@ import sys
 # 添加父目录到路径，支持导入config
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import TS_TOKEN, FUND_DB
+import strategy_monitor
 
 def get_qdii_funds(conn):
     """从数据库获取QDII基金列表"""
@@ -235,6 +236,19 @@ def generate_snapshot(conn, pro):
         print(f"  {fund_code}: 净值{nav_today:.4f} 资产{asset_value:.2f} 盈亏{profit:+.2f}")
     
     conn.commit()
+
+    # --- 新增：BIAS & Drawdown 策略监控 ---
+    print("\n=== 更新技术指标监控 ===")
+    for fund_code, fund_name, shares, base_amount in holdings:
+        try:
+            res = strategy_monitor.monitor_fund(fund_code)
+            if res:
+                strategy_monitor.save_stats(fund_code, res)
+                print(f"  {fund_code}: BIAS-250:{res['bias_250']:.2%} Drawdown:{res['drawdown']:.2%} -> {res['level']}")
+        except Exception as e:
+            print(f"  {fund_code}: 计算策略信号识别失败: {e}")
+    # -----------------------------------
+
     print(f"\n当日涨跌合计: {total_daily:+.2f}")
 
 def main():

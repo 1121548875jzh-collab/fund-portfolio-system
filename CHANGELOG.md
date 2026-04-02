@@ -1,5 +1,17 @@
 # Changelog
 
+## [V3.2] - 2026-04-02
+
+### Added
+- **Investment Strategy**: Integrated a standardized monitoring and execution rule based on **BIAS-250** and **Drawdown** (3-year rolling window).
+- **Fund Profiling**: Added risk classification for 27 key funds (High, Medium, and Low volatility) in `config.py` with custom thresholds.
+- **Strategy Monitor**: New `strategy_monitor.py` module for automated calculation of technical indicators and signal matching.
+- **Enhanced Reporting**: Updated `send_email.py` and `daily_update.py` to include real-time investment recommendations ("補倉区", "大額区", etc.) in both email bodies and CSV attachments.
+
+### Optimized
+- **Decision Logic**: Implemented "Double Confirmation" logic (BIAS + Drawdown) to prevent premature capital depletion during extended market downturns.
+
+
 ## [V3.1] - 2026-04-01
 
 ### Added

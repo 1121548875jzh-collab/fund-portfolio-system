@@ -156,7 +156,7 @@ def get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev
             'code': code, 'name': name, 'nav': today_nav, 'shares': shares,
             'base': base, 'asset': asset, 'profit': profit,
             'today_profit': today_profit, 'daily_pct': daily_pct,
-            'week_pct': week_pct, 'month_pct': month_pct
+            'week_pct': week_pct, 'month_pct': month_pct,
         })
         
         total_base += base or 0
@@ -188,6 +188,15 @@ def generate_report():
     holdings, total_base, total_asset, total_profit, total_today = get_holdings_detail(cursor, normal_today, normal_prev, qdii_today, qdii_prev, qdii_funds)
     trades = get_recent_trades(cursor)
     
+    # --- 新增：获取技术面策略建议 ---
+    cursor.execute("""
+        SELECT fund_code, bias_250, drawdown, signal_level, suggested_action 
+        FROM fund_technical_stats 
+        WHERE fund_code IN (SELECT fund_code FROM fund_holdings)
+    """)
+    technical_stats = {row[0]: row for row in cursor.fetchall()}
+    # -----------------------------
+    
     conn.close()
     
     date_str = f"{report_date[:4]}-{report_date[4:6]}-{report_date[6:8]}"
@@ -212,13 +221,15 @@ def generate_report():
     
     # 持仓明细
     writer.writerow(['[持仓明细]'])
-    writer.writerow(['代码', '名称', '净值', '份额', '本金', '资产', '盈亏', '当日盈亏', '昨日涨跌', '近一周涨跌', '近一月涨跌'])
+    writer.writerow(['代码', '名称', '净值', '份额', '本金', '资产', '盈亏', '当日盈亏', '昨日涨跌', '信号/建议'])
     
     for h in holdings:
+        stat = technical_stats.get(h['code'], (None, 0, 0, '无数据', '--'))
+        signal_text = f"{stat[3]}: {stat[4]}"
         writer.writerow([
             h['code'], h['name'], h['nav'], round(h['shares'], 2), h['base'],
             h['asset'], h['profit'], f"{h['today_profit']:+.2f}",
-            f"{h['daily_pct']:+.2f}%", f"{h['week_pct']:+.2f}%", f"{h['month_pct']:+.2f}%"
+            f"{h['daily_pct']:+.2f}%", signal_text
         ])
     
     writer.writerow(['合计', '', '', '', round(total_base, 2), round(total_asset, 2), round(total_profit, 2), f"{total_today:+.2f}", '', '', ''])
@@ -236,6 +247,20 @@ def generate_report():
             qty = f"{amount:.2f}元"
             op = '定投' if amount <= 100 else '加仓'
         writer.writerow([confirm_date, code, op, qty])
+    writer.writerow([])
+
+    # --- 新增：BIAS & Drawdown 详细技术面分级建议 ---
+    writer.writerow(['[投资建议 (BIAS-250 & Drawdown 核心规则)]'])
+    writer.writerow(['代码', '名称', 'BIAS-250 乖离率', 'Current Drawdown 回撤度', '建议操作等级', '具体行动'])
+    
+    for h in holdings:
+        stat = technical_stats.get(h['code'])
+        if stat:
+            writer.writerow([
+                h['code'], h['name'], f"{stat[1]:.2%}", f"{stat[2]:.2%}", stat[3], stat[4]
+            ])
+        else:
+            writer.writerow([h['code'], h['name'], '--', '--', '等待数据更新', '--'])
     
     return csv_content.getvalue(), date_str
 
