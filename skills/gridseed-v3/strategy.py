@@ -104,8 +104,10 @@ def calc_drawdown(current_nav, base_nav):
         return 0
     return (current_nav - base_nav) / base_nav
 
-def get_phase(grid_base_nav):
-    """判断阶段"""
+def get_phase(grid_base_nav, phase_col=None):
+    """判断阶段，优先使用数据库 phase，没值则回退到根据 grid_base_nav 判断"""
+    if phase_col:
+        return phase_col
     return 'GRID' if grid_base_nav else 'ACCUMULATION'
 
 def send_telegram(message):
@@ -138,7 +140,7 @@ def check_actions():
     cursor = conn.cursor()
     
     cursor.execute('''
-        SELECT fund_code, fund_name, step, last_nav, last_date, total_cost, total_shares, grid_base_nav
+        SELECT fund_code, fund_name, step, last_nav, last_date, total_cost, total_shares, grid_base_nav, phase
         FROM strategy_positions
     ''')
     positions = cursor.fetchall()
@@ -157,13 +159,13 @@ def check_actions():
     idle_trade_days = int(params.get('idle_trade_days', 10))
     grid_buy_amount = params.get('grid_buy_amount', 100)
     
-    for fund_code, fund_name, step, last_nav, last_date, total_cost, total_shares, grid_base_nav in positions:
+    for fund_code, fund_name, step, last_nav, last_date, total_cost, total_shares, grid_base_nav, phase_col in positions:
         current_nav, nav_date = get_nav(pro, fund_code)
         if not current_nav:
             continue
         
         drawdown = calc_drawdown(current_nav, last_nav)
-        phase = get_phase(grid_base_nav)
+        phase = get_phase(grid_base_nav, phase_col)
         
         if total_shares and total_shares > 0 and total_cost and total_cost > 0:
             current_value = total_shares * current_nav
@@ -200,6 +202,10 @@ def check_actions():
                 })
         else:
             # 网格阶段
+            if not grid_base_nav:
+                # 基准净值待定，跳过本轮监控
+                continue
+
             if drawdown <= grid_buy_threshold:
                 actions.append({
                     'fund_code': fund_code, 'fund_name': fund_name,
@@ -297,7 +303,7 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
     cursor = conn.cursor()
     
     cursor.execute(
-        "SELECT fund_name, step, total_cost, total_shares, grid_base_nav FROM strategy_positions WHERE fund_code = ?",
+        "SELECT fund_name, step, total_cost, total_shares, grid_base_nav, phase FROM strategy_positions WHERE fund_code = ?",
         (fund_code,)
     )
     pos = cursor.fetchone()
@@ -306,8 +312,8 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
         conn.close()
         return False, f"基金 {fund_code} 不在监控列表中"
     
-    fund_name, step, total_cost, total_shares, grid_base_nav = pos
-    phase = get_phase(grid_base_nav)
+    fund_name, step, total_cost, total_shares, grid_base_nav, phase_col = pos
+    phase = get_phase(grid_base_nav, phase_col)
     
     is_confirmed = False
     
@@ -373,7 +379,9 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
     
     # 如果是进入网格模式，更新grid_base_nav
     if trigger_reason in ['进入网格', '赎回'] or '建仓期卖出' in trigger_reason:
-        cursor.execute("UPDATE strategy_positions SET grid_base_nav = ?, phase = 'GRID' WHERE fund_code = ?", (nav, fund_code))
+        # 核心逻辑：若净值尚未确认，则 grid_base_nav 设为 NULL，正式进入 GRID 阶段
+        target_nav = nav if is_confirmed else None
+        cursor.execute("UPDATE strategy_positions SET grid_base_nav = ?, phase = 'GRID' WHERE fund_code = ?", (target_nav, fund_code))
     
     conn.commit()
     conn.close()
