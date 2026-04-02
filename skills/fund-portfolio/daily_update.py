@@ -134,15 +134,15 @@ def confirm_pending_trades(conn, pro):
             if row and row[0]:
                 new_shares = row[0] + shares
                 new_base = row[1] + amount
-                cursor.execute('UPDATE fund_holdings SET shares = ?, base_amount = ? WHERE fund_code = ?',
-                    (new_shares, new_base, fund_code))
+                cursor.execute('UPDATE fund_holdings SET shares = ?, base_amount = ?, nav = ?, nav_date = ?, updated_at = CURRENT_TIMESTAMP WHERE fund_code = ?',
+                    (new_shares, new_base, nav, trade_date_fmt, fund_code))
                 fund_name = row[2]
             else:
                 cursor.execute('SELECT fund_name FROM fund_holdings WHERE fund_code = ?', (fund_code,))
                 fund_name_row = cursor.fetchone()
                 fund_name = fund_name_row[0] if fund_name_row else fund_code
-                cursor.execute('INSERT INTO fund_holdings (fund_code, fund_name, shares, base_amount) VALUES (?, ?, ?, ?)',
-                    (fund_code, fund_name, shares, amount))
+                cursor.execute('INSERT INTO fund_holdings (fund_code, fund_name, shares, base_amount, nav, nav_date) VALUES (?, ?, ?, ?, ?, ?)',
+                    (fund_code, fund_name, shares, amount, nav, trade_date_fmt))
             
             print(f"  ✅ 买入 {fund_code} {amount}元 → {shares:.2f}份")
             
@@ -170,8 +170,8 @@ def confirm_pending_trades(conn, pro):
                     cursor.execute('DELETE FROM fund_holdings WHERE fund_code = ?', (fund_code,))
                     print(f"  ✅ 清仓 {fund_code} {sell_shares:.2f}份 → {actual_amount:.2f}元，盈亏: {profit:+.2f}元")
                 else:
-                    cursor.execute('UPDATE fund_holdings SET shares = ?, base_amount = ? WHERE fund_code = ?',
-                        (new_shares, new_base, fund_code))
+                    cursor.execute('UPDATE fund_holdings SET shares = ?, base_amount = ?, nav = ?, nav_date = ?, updated_at = CURRENT_TIMESTAMP WHERE fund_code = ?',
+                        (new_shares, new_base, nav, trade_date_fmt, fund_code))
                     print(f"  ✅ 卖出 {fund_code} {sell_shares:.2f}份 → {actual_amount:.2f}元")
         
         cursor.execute('UPDATE fund_trades SET status = ?, confirm_date = ? WHERE id = ?',
@@ -232,6 +232,12 @@ def generate_snapshot(conn, pro):
             (date, fund_code, fund_name, shares, base_amount, asset_value, profit, nav, daily_profit)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (today, fund_code, fund_name, shares, base_amount, asset_value, profit, nav_today, daily_profit))
+        
+        # 同步更新 fund_holdings 表的展示用净值
+        cursor.execute('''
+            UPDATE fund_holdings SET nav = ?, nav_date = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE fund_code = ?
+        ''', (nav_today, today_fmt, fund_code))
         
         print(f"  {fund_code}: 净值{nav_today:.4f} 资产{asset_value:.2f} 盈亏{profit:+.2f}")
     
