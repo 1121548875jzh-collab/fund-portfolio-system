@@ -118,6 +118,23 @@ def sync_trades():
                 continue
             
             old_cost, old_shares, step, grid_base_nav = pos
+            
+            # 新基金加入 GridSeed 时，同步 fund_holdings 已有持仓
+            if old_cost == 0 and old_shares == 0:
+                fund_cursor.execute(
+                    "SELECT base_amount, shares FROM fund_holdings WHERE fund_code = ?",
+                    (fund_code,)
+                )
+                holding = fund_cursor.fetchone()
+                if holding and holding[0] and holding[0] > 0:
+                    grid_cursor.execute(
+                        "UPDATE strategy_positions SET total_cost = ?, total_shares = ? WHERE fund_code = ?",
+                        (holding[0], holding[1], fund_code)
+                    )
+                    old_cost = holding[0]
+                    old_shares = holding[1]
+                    print(f"  📥 {fund_code}: 同步历史持仓 cost={holding[0]:.2f} shares={holding[1]:.2f}")
+            
             phase = 'GRID' if grid_base_nav else 'ACCUMULATION'
             
             if trade_type == 'BUY':

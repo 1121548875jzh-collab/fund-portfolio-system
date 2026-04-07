@@ -1,5 +1,12 @@
 # Changelog
 
+## [V3.3] - 2026-04-07
+
+### Fixed
+- **Historical Sync (P1)**: Modified `sync_trades.py` to automatically synchronize `total_cost` and `total_shares` from `fund_holdings` when a new fund joins GridSeed. This resolves data inconsistencies for newly added funds.
+- **Holiday DCA Handling (P1)**: Rewrote `dca_runner.py` to incorporate A-share trading calendar validation via Tushare API.
+- **Automatic Catch-up**: Implemented automatic DCA catch-up logic for holidays, ensuring missed investments during A-share market closures are executed on the first subsequent trading day.
+
 ## [V3.2] - 2026-04-02
 
 ### Added
