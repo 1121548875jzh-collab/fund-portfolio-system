@@ -50,7 +50,10 @@ def init_db():
             shares REAL,
             trigger_reason TEXT,
             status TEXT DEFAULT 'PENDING',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            trade_source TEXT,
+            strategy_action TEXT,
+            step_label TEXT
         )
     ''')
     

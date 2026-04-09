@@ -46,7 +46,10 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             confirm_date TEXT,
             is_qdii INTEGER DEFAULT 0,
-            is_shares INTEGER DEFAULT 0
+            is_shares INTEGER DEFAULT 0,
+            trade_source TEXT,
+            strategy_action TEXT,
+            step_label TEXT
         )
     ''')
     

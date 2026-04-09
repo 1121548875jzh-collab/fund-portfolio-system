@@ -19,6 +19,7 @@ import sys
 # 添加父目录到路径，支持导入config
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from config import TS_TOKEN, FUND_DB, GRID_DB
+from bootstrap_positions import bootstrap_position
 
 def get_nav(pro, fund_code, trade_date):
     """获取交易日净值"""
@@ -119,21 +120,21 @@ def sync_trades():
             
             old_cost, old_shares, step, grid_base_nav = pos
             
-            # 新基金加入 GridSeed 时，同步 fund_holdings 已有持仓
+            # 新基金加入 GridSeed 时，显式初始化策略持仓缓存
             if old_cost == 0 and old_shares == 0:
-                fund_cursor.execute(
-                    "SELECT base_amount, shares FROM fund_holdings WHERE fund_code = ?",
-                    (fund_code,)
+                bootstrapped, message = bootstrap_position(
+                    fund_cursor,
+                    grid_cursor,
+                    fund_code,
+                    only_if_empty=True,
                 )
-                holding = fund_cursor.fetchone()
-                if holding and holding[0] and holding[0] > 0:
+                if bootstrapped:
+                    print(f"  📥 {message}")
                     grid_cursor.execute(
-                        "UPDATE strategy_positions SET total_cost = ?, total_shares = ? WHERE fund_code = ?",
-                        (holding[0], holding[1], fund_code)
+                        "SELECT total_cost, total_shares FROM strategy_positions WHERE fund_code = ?",
+                        (fund_code,)
                     )
-                    old_cost = holding[0]
-                    old_shares = holding[1]
-                    print(f"  📥 {fund_code}: 同步历史持仓 cost={holding[0]:.2f} shares={holding[1]:.2f}")
+                    old_cost, old_shares = grid_cursor.fetchone()
             
             phase = 'GRID' if grid_base_nav else 'ACCUMULATION'
             
@@ -161,9 +162,12 @@ def sync_trades():
                     (new_cost, new_shares, nav, trade_date, trigger_reason, amount, new_step, datetime.now().strftime('%Y-%m-%d %H:%M'), fund_code)
                 )
                 
+                trade_source = 'GRID' if phase == 'GRID' else 'STRATEGY'
+                strategy_action = 'GRID_BUY' if phase == 'GRID' else 'ACCUM_BUY'
+                step_label = None if phase == 'GRID' else f'L{new_step}'
                 grid_cursor.execute(
-                    "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, nav, shares, trigger_reason, status) VALUES (?, ?, 'BUY', ?, ?, ?, ?, 'CONFIRMED')",
-                    (fund_code, trade_date, amount, nav, shares, trigger_reason)
+                    "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, nav, shares, trigger_reason, status, trade_source, strategy_action, step_label) VALUES (?, ?, 'BUY', ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?)",
+                    (fund_code, trade_date, amount, nav, shares, trigger_reason, trade_source, strategy_action, step_label)
                 )
                 
                 print(f"  {fund_code}: {trigger_reason} {amount}元")
@@ -192,9 +196,12 @@ def sync_trades():
                     (new_cost, new_shares, nav, trade_date, trigger_reason, amount, datetime.now().strftime('%Y-%m-%d %H:%M'), fund_code)
                 )
                 
+                trade_source = 'GRID' if phase == 'GRID' else 'STRATEGY'
+                strategy_action = 'GRID_SELL' if phase == 'GRID' else 'ACCUM_SELL'
+                step_label = None
                 grid_cursor.execute(
-                    "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, nav, shares, trigger_reason, status) VALUES (?, ?, 'SELL', ?, ?, ?, ?, 'CONFIRMED')",
-                    (fund_code, trade_date, amount, nav, shares, trigger_reason)
+                    "INSERT INTO strategy_trades (fund_code, trade_date, trade_type, amount, nav, shares, trigger_reason, status, trade_source, strategy_action, step_label) VALUES (?, ?, 'SELL', ?, ?, ?, ?, 'CONFIRMED', ?, ?, ?)",
+                    (fund_code, trade_date, amount, nav, shares, trigger_reason, trade_source, strategy_action, step_label)
                 )
                 
                 print(f"  {fund_code}: {trigger_reason} {amount}元")

@@ -107,10 +107,11 @@ def create_weekday_trades(cursor, config, weekday, trade_date, is_qdii_filter=No
         amount = amounts[weekday] if weekday < 5 else 0
         
         if amount > 0:
+            trade_source = 'CATCH_UP' if label else 'DCA'
             cursor.execute('''
-                INSERT INTO fund_trades (trade_date, trade_type, amount, fund_code, status, is_qdii)
-                VALUES (?, 'BUY', ?, ?, 'PENDING', ?)
-            ''', (trade_date, amount, fund_code, is_qdii))
+                INSERT INTO fund_trades (trade_date, trade_type, amount, fund_code, status, is_qdii, trade_source, strategy_action, step_label, original_remark)
+                VALUES (?, 'BUY', ?, ?, 'PENDING', ?, ?, 'NONE', NULL, ?)
+            ''', (trade_date, amount, fund_code, is_qdii, trade_source, label or None))
             
             suffix = f" ({label})" if label else ""
             print(f"  {fund_code} {fund_name}: {amount}元{suffix}")
@@ -179,9 +180,9 @@ def run_dca():
     for fund_code, fund_name, w1, w2, w3, w4, w5, monthly_day, monthly_amount, is_qdii in config:
         if monthly_day > 0 and day == monthly_day and monthly_amount > 0:
             cursor.execute('''
-                INSERT INTO fund_trades (trade_date, trade_type, amount, fund_code, status, is_qdii)
-                VALUES (?, 'BUY', ?, ?, 'PENDING', ?)
-            ''', (today.strftime('%Y-%m-%d'), monthly_amount, fund_code, is_qdii))
+                INSERT INTO fund_trades (trade_date, trade_type, amount, fund_code, status, is_qdii, trade_source, strategy_action, step_label, original_remark)
+                VALUES (?, 'BUY', ?, ?, 'PENDING', ?, 'DCA', 'NONE', NULL, ?)
+            ''', (today.strftime('%Y-%m-%d'), monthly_amount, fund_code, is_qdii, f'月定投{monthly_day}号'))
             
             print(f"  {fund_code} {fund_name}: {monthly_amount}元 (月定投{monthly_day}号)")
             trades_created += 1
