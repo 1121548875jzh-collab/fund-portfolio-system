@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 import os
 import sys
 import requests
+import math
 
 # 添加父目录到路径，支持导入config
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -80,23 +81,29 @@ def count_trade_days(pro, start_date, end_date):
 
     return count
 
-def get_nav(pro, fund_code, trade_date=None):
-    """获取净值，返回 (nav, nav_date)；若指定 trade_date 则只返回 nav"""
+def get_nav_df(pro, fund_code):
+    """获取基金净值序列，按 Tushare 默认顺序返回。"""
     try:
         df = pro.fund_nav(ts_code=f'{fund_code}.OF')
-        if df.empty:
-            return (None, None) if not trade_date else None
-
-        if trade_date:
-            trade_date_fmt = trade_date.replace('-', '')
-            for _, row in df.iterrows():
-                if row['nav_date'] == trade_date_fmt:
-                    return float(row['unit_nav'])
-            return None
-
-        return float(df.iloc[0]['unit_nav']), str(df.iloc[0]['nav_date'])
+        return df if not df.empty else None
     except:
+        return None
+
+
+def get_nav(pro, fund_code, trade_date=None):
+    """获取净值，返回 (nav, nav_date)；若指定 trade_date 则只返回 nav"""
+    df = get_nav_df(pro, fund_code)
+    if df is None:
         return (None, None) if not trade_date else None
+
+    if trade_date:
+        trade_date_fmt = trade_date.replace('-', '')
+        for _, row in df.iterrows():
+            if row['nav_date'] == trade_date_fmt:
+                return float(row['unit_nav'])
+        return None
+
+    return float(df.iloc[0]['unit_nav']), str(df.iloc[0]['nav_date'])
 
 def calc_drawdown(current_nav, base_nav):
     """计算跌幅"""
@@ -142,6 +149,68 @@ def is_buy_like_action(strategy_action=None, trigger_reason=None, action_text=No
     return action in ('ACCUM_BUY', 'GRID_BUY', 'IDLE_WAKE')
 
 
+def clip(value, min_value, max_value):
+    """限制数值范围"""
+    return max(min_value, min(value, max_value))
+
+
+def round_to_step(value, step=10):
+    """按固定步进取整，便于实际执行。"""
+    return round(value / step) * step
+
+
+def calc_mid_position_factor(nav_df, current_nav):
+    """用近250个净值点估算当前所处区间位置。"""
+    if nav_df is None or current_nav is None:
+        return 1.0, None
+
+    sample = nav_df.head(250)
+    if sample.empty:
+        return 1.0, None
+
+    navs = [float(row['unit_nav']) for _, row in sample.iterrows() if row['unit_nav'] is not None]
+    if not navs:
+        return 1.0, None
+
+    low = min(navs)
+    high = max(navs)
+    if high <= low:
+        return 1.0, 0.5
+
+    pos = (current_nav - low) / (high - low)
+    pos = clip(pos, 0.0, 1.0)
+
+    if pos <= 0.35:
+        return 1.2, pos
+    if pos <= 0.65:
+        return 1.0, pos
+    if pos <= 0.85:
+        return 0.7, pos
+    return 0.4, pos
+
+
+def calc_idle_wake_amount(current_value, price_change, mid_position_factor, base_amount):
+    """闲置唤醒平衡版：仓位、短期涨跌、中期位置共同决定金额。"""
+    target_value = 3000.0
+    safe_value = max(current_value or 0, 1.0)
+    h_factor = clip((target_value / safe_value) ** 0.5, 0.4, 1.6)
+
+    if price_change <= -0.03:
+        short_factor = 1.2
+    elif price_change <= 0.03:
+        short_factor = 1.0
+    elif price_change <= 0.06:
+        short_factor = 0.8
+    elif price_change <= 0.10:
+        short_factor = 0.6
+    else:
+        short_factor = 0.4
+
+    amount = clip(base_amount * h_factor * short_factor * mid_position_factor, 20, 150)
+    amount = clip(round_to_step(amount, 10), 20, 150)
+    return float(amount), h_factor, short_factor
+
+
 def send_telegram(message):
     """发送 Telegram 消息"""
     try:
@@ -159,6 +228,79 @@ def send_telegram(message):
     except Exception as e:
         print(f"[Telegram] 发送异常: {e}")
         return False
+
+
+def sync_trade_to_fund_db(fund_code, trade_date, trade_type, amount, shares, nav, strategy_action, trigger_reason, status='CONFIRMED'):
+    """将策略已确认交易同步到基金主账，避免两套账分叉。"""
+    if not os.path.exists(FUND_DB):
+        return False, '基金数据库不存在'
+
+    fund_conn = sqlite3.connect(FUND_DB)
+    fund_cursor = fund_conn.cursor()
+
+    # 同交易日、同方向、同来源已存在则不重复写入
+    fund_cursor.execute(
+        """
+        SELECT id FROM fund_trades
+        WHERE fund_code = ? AND trade_date = ? AND trade_type = ? AND trade_source = 'STRATEGY'
+          AND strategy_action = ?
+        ORDER BY id DESC LIMIT 1
+        """,
+        (fund_code, trade_date, trade_type, strategy_action)
+    )
+    if fund_cursor.fetchone():
+        fund_conn.close()
+        return True, 'fund_trades 已存在'
+
+    is_shares = 1 if trade_type == 'SELL' and shares else 0
+    trade_amount = shares if is_shares else amount
+    original_remark = f'{trigger_reason} 同步入主账'
+    confirm_date = trade_date if status == 'CONFIRMED' else None
+
+    fund_cursor.execute(
+        """
+        INSERT INTO fund_trades (
+            trade_date, amount, trade_type, fund_code, status,
+            confirm_date, is_qdii, is_shares, trade_source, strategy_action, original_remark
+        ) VALUES (?, ?, ?, ?, ?, ?, 0, ?, 'STRATEGY', ?, ?)
+        """,
+        (trade_date, trade_amount, trade_type, fund_code, status, confirm_date, is_shares, strategy_action, original_remark)
+    )
+
+    if status == 'CONFIRMED' and nav:
+        fund_cursor.execute(
+            "SELECT shares, base_amount, fund_name FROM fund_holdings WHERE fund_code = ?",
+            (fund_code,)
+        )
+        holding = fund_cursor.fetchone()
+
+        if trade_type == 'BUY':
+            buy_shares = shares if shares else amount / nav
+            if holding:
+                old_shares, old_base, _ = holding
+                new_shares = (old_shares or 0) + buy_shares
+                new_base = (old_base or 0) + amount
+                fund_cursor.execute(
+                    "UPDATE fund_holdings SET shares = ?, base_amount = ?, nav = ?, nav_date = ?, updated_at = CURRENT_TIMESTAMP WHERE fund_code = ?",
+                    (new_shares, new_base, nav, trade_date.replace('-', ''), fund_code)
+                )
+        elif trade_type == 'SELL' and holding:
+            old_shares, old_base, _ = holding
+            sell_shares = shares if shares else amount / nav
+            actual_amount = sell_shares * nav
+            new_shares = (old_shares or 0) - sell_shares
+            new_base = (old_base or 0) * (1 - sell_shares / old_shares) if old_shares and old_shares > 0 else 0
+            if new_shares <= 0.01:
+                fund_cursor.execute("DELETE FROM fund_holdings WHERE fund_code = ?", (fund_code,))
+            else:
+                fund_cursor.execute(
+                    "UPDATE fund_holdings SET shares = ?, base_amount = ?, nav = ?, nav_date = ?, updated_at = CURRENT_TIMESTAMP WHERE fund_code = ?",
+                    (new_shares, new_base, nav, trade_date.replace('-', ''), fund_code)
+                )
+
+    fund_conn.commit()
+    fund_conn.close()
+    return True, '同步成功'
 
 def check_actions():
     """检查所有基金的策略动作"""
@@ -192,9 +334,11 @@ def check_actions():
     grid_buy_amount = params.get('grid_buy_amount', 100)
 
     for fund_code, fund_name, step, last_nav, last_date, total_cost, total_shares, grid_base_nav, phase_col in positions:
-        current_nav, nav_date = get_nav(pro, fund_code)
-        if not current_nav:
+        nav_df = get_nav_df(pro, fund_code)
+        if nav_df is None:
             continue
+        current_nav = float(nav_df.iloc[0]['unit_nav'])
+        nav_date = str(nav_df.iloc[0]['nav_date'])
 
         drawdown = calc_drawdown(current_nav, last_nav)
         phase = get_phase(grid_base_nav, phase_col)
@@ -267,13 +411,17 @@ def check_actions():
         if phase != 'GRID' and last_date:
             idle_days = count_trade_days(pro, last_date, today)
             if idle_days >= idle_trade_days:
-                idle_amount = params.get('idle_wake_amount', 100)
-                actions.append({
-                    'fund_code': fund_code, 'fund_name': fund_name,
-                    'action': '闲置唤醒', 'strategy_action': 'IDLE_WAKE', 'amount': idle_amount,
-                    'drawdown': drawdown, 'step': step, 'phase': phase,
-                    'idle_days': idle_days
-                })
+                base_idle_amount = float(params.get('idle_wake_amount', 100))
+                mid_factor, mid_pos = calc_mid_position_factor(nav_df, current_nav)
+                idle_amount, h_factor, short_factor = calc_idle_wake_amount(current_value, drawdown, mid_factor, base_idle_amount)
+                if idle_amount > 0:
+                    actions.append({
+                        'fund_code': fund_code, 'fund_name': fund_name,
+                        'action': '闲置唤醒', 'strategy_action': 'IDLE_WAKE', 'amount': idle_amount,
+                        'drawdown': drawdown, 'step': step, 'phase': phase,
+                        'idle_days': idle_days, 'h_factor': h_factor,
+                        'short_factor': short_factor, 'mid_factor': mid_factor, 'mid_pos': mid_pos
+                    })
 
     conn.close()
     return actions
@@ -430,6 +578,12 @@ def record_operation(fund_code, trade_type, amount, trade_date=None, shares=None
         (fund_code, trade_date, trade_type, amount, shares, nav, trigger_reason, status, trade_source, strategy_action, step_label)
     )
 
+    if status == 'CONFIRMED':
+        sync_trade_to_fund_db(
+            fund_code, trade_date, trade_type, amount, shares, nav,
+            strategy_action, trigger_reason, status='CONFIRMED'
+        )
+
     # 如果是进入网格模式，更新grid_base_nav
     if trigger_reason in ['进入网格', '赎回'] or '建仓期卖出' in trigger_reason:
         # 核心逻辑：若净值尚未确认，则 grid_base_nav 设为 NULL，正式进入 GRID 阶段
@@ -451,7 +605,7 @@ def update_pending_navs():
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id, fund_code, trade_date, trade_type, amount, trigger_reason, strategy_action FROM strategy_trades WHERE status = 'PENDING_NAV'"
+        "SELECT id, fund_code, trade_date, trade_type, amount, shares, trigger_reason, strategy_action FROM strategy_trades WHERE status = 'PENDING_NAV'"
     )
     pending = cursor.fetchall()
 
@@ -462,19 +616,28 @@ def update_pending_navs():
     updated = 0
     failed = []
 
-    for trade_id, fund_code, trade_date, trade_type, amount, trigger_reason, strategy_action in pending:
+    for trade_id, fund_code, trade_date, trade_type, amount, shares, trigger_reason, strategy_action in pending:
         nav = get_nav(pro, fund_code, trade_date)
 
         if not nav:
             failed.append({'fund_code': fund_code, 'trade_date': trade_date, 'reason': '净值未出'})
             continue
 
-        shares = amount / nav
-
-        cursor.execute("UPDATE strategy_trades SET nav = ?, shares = ?, status = 'CONFIRMED' WHERE id = ?", (nav, shares, trade_id))
-        cursor.execute("UPDATE strategy_positions SET last_nav = ? WHERE fund_code = ?", (nav, fund_code))
-
         resolved_action = classify_strategy_action(strategy_action, trigger_reason)
+
+        # 买入默认由金额反推份额；卖出若用户先给了份额，则确认时保持份额不变，只回算金额。
+        if trade_type == 'SELL' and shares:
+            confirmed_shares = shares
+            confirmed_amount = confirmed_shares * nav
+        else:
+            confirmed_shares = amount / nav
+            confirmed_amount = amount
+
+        cursor.execute(
+            "UPDATE strategy_trades SET nav = ?, shares = ?, amount = ?, status = 'CONFIRMED' WHERE id = ?",
+            (nav, confirmed_shares, confirmed_amount, trade_id)
+        )
+        cursor.execute("UPDATE strategy_positions SET last_nav = ? WHERE fund_code = ?", (nav, fund_code))
 
         if resolved_action in ('ENTER_GRID', 'ACCUM_SELL'):
             cursor.execute("UPDATE strategy_positions SET grid_base_nav = ?, phase = 'GRID' WHERE fund_code = ?", (nav, fund_code))
@@ -483,14 +646,19 @@ def update_pending_navs():
             cursor.execute('''
                 INSERT INTO grid_batches (fund_code, buy_date, amount, shares, nav, status)
                 VALUES (?, ?, ?, ?, ?, 'HELD')
-            ''', (fund_code, trade_date, amount, shares, nav))
+            ''', (fund_code, trade_date, confirmed_amount, confirmed_shares, nav))
         elif resolved_action == 'GRID_SELL':
             cursor.execute('''
                 UPDATE grid_batches 
                 SET status = 'SOLD', sell_date = ?, sell_nav = ?, profit = ?
                 WHERE fund_code = ? AND status = 'HELD'
                 ORDER BY buy_date LIMIT 1
-            ''', (trade_date, nav, shares * nav - amount, fund_code))
+            ''', (trade_date, nav, confirmed_shares * nav - confirmed_amount, fund_code))
+
+        sync_trade_to_fund_db(
+            fund_code, trade_date, trade_type, confirmed_amount, confirmed_shares, nav,
+            resolved_action, trigger_reason, status='CONFIRMED'
+        )
 
         updated += 1
 

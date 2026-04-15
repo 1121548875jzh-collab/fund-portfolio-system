@@ -11,14 +11,32 @@ import os
 import sys
 import sqlite3
 from datetime import datetime
+import requests
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from config import FUND_DB, GRID_DB  # noqa: E402
+from config import FUND_DB, GRID_DB, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID  # noqa: E402
 
 COST_EPSILON = 0.01
 SHARES_EPSILON = 0.0001
 PENDING_WARN_DAYS = 2
 PENDING_ERROR_DAYS = 3
+
+
+def send_telegram(message):
+    """发送 Telegram 告警。"""
+    try:
+        if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+            print('[WARN] telegram not configured, skip alert')
+            return False
+        resp = requests.post(
+            f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+            data={'chat_id': TELEGRAM_CHAT_ID, 'text': message},
+            timeout=10,
+        )
+        return resp.status_code == 200
+    except Exception as exc:
+        print(f"[WARN] telegram alert failed: {exc}")
+        return False
 
 
 class Reporter:
@@ -61,6 +79,25 @@ class Reporter:
 
     def exit_code(self):
         return 1 if self.errors else 0
+
+    def build_alert_message(self):
+        if not self.errors and not self.warnings:
+            return None
+
+        lines = [
+            f"GridSeed 巡检告警 {datetime.now().strftime('%Y-%m-%d %H:%M')}",
+            f"errors={len(self.errors)} warnings={len(self.warnings)}",
+        ]
+
+        for code, message in self.errors[:10]:
+            lines.append(f"ERROR {code}: {message}")
+        for code, message in self.warnings[:10]:
+            lines.append(f"WARN {code}: {message}")
+
+        if len(self.errors) > 10 or len(self.warnings) > 10:
+            lines.append('更多详情请查看 logs/gridseed_consistency.log')
+
+        return '\n'.join(lines)
 
 
 def parse_date(date_str):
@@ -272,6 +309,9 @@ def main():
         check_pending_trades(fund_conn, grid_conn, reporter)
         check_position_coverage(fund_conn, grid_conn, reporter)
         reporter.print_report()
+        alert_message = reporter.build_alert_message()
+        if alert_message:
+            send_telegram(alert_message)
         return reporter.exit_code()
     finally:
         fund_conn.close()

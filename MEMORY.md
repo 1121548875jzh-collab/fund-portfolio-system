@@ -14,12 +14,13 @@
 
 ```
 定时任务 (crontab)
-├── 8:20 daily_update.py   # 净值更新+交易确认
-├── 8:23 dca_runner.py     # 定投执行
-├── 8:26 sync_trades.py    # GridSeed同步
-├── 8:28 update_navs       # 补充净值+批次回填
-├── 8:30 send_email.py     # 邮件报告
-└── 8:35 strategy.py check # GridSeed提醒
+├── 8:20 daily_update.py      # 净值更新+交易确认
+├── 8:23 dca_runner.py        # 定投执行
+├── 8:26 sync_trades.py       # GridSeed同步
+├── 8:28 update_navs          # 补充净值+批次回填
+├── 8:30 send_email.py        # 邮件报告
+├── 8:35 strategy.py check    # GridSeed提醒
+└── 9:00 morning_audit.py     # 一致性巡检+异常提醒
 ```
 
 ---
@@ -55,6 +56,24 @@ new_step = step  # 不增加step
 if phase == 'GRID':
     trigger_reason = '网格买入/卖出'
     # 正确处理 grid_batches
+```
+
+### 主账闭环
+
+```python
+strategy_trades CONFIRMED
+    -> sync_trade_to_fund_db()
+    -> 写入 fund_trades
+    -> 同步 fund_holdings
+```
+
+### 巡检闭环
+
+```python
+9:00 morning_audit.py
+    -> check_consistency.py --fix-cost-cache
+    -> check_consistency.py
+    -> 有 error/warn 则 Telegram 提醒
 ```
 
 ---
@@ -139,7 +158,7 @@ Drawdown = (近3年最高净值 - 当前净值) / 近3年最高净值
 
 ## 已知问题
 
-暂无（V3.3已修复历史问题）
+- `daily_fund_snapshot` 是报表快照，手工修正持仓后不会自动回写历史快照；若需要历史报表完全重算，需单独执行重建任务。
 
 ---
 
@@ -152,6 +171,9 @@ Drawdown = (近3年最高净值 - 当前净值) / 近3年最高净值
 5. **step更新：** 检查是否已存在，避免重复
 6. **total_cost同步：** 新基金加入时必须同步已有持仓
 7. **港股休市：** dca_runner需考虑港股休市日
+8. **主账优先：** `fund_trades / fund_holdings` 是最终持仓口径，`strategy_*` 必须跟随同步
+9. **卖出按份额优先：** 若用户下达的是卖出份额，确认后只回算金额，不得反推份额
+10. **巡检常态化：** 每个交易日上午 9:00 自动巡检；发现分叉或长时间 pending 必须提醒
 
 ---
 

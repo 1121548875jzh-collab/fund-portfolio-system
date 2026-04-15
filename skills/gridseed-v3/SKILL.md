@@ -34,9 +34,50 @@ else:
 
 | 条件 | 操作 |
 |:---|:---|
-| 10 个交易日无操作 | 提醒加仓 100元 |
+| 10 个交易日无操作 | 按动态金额提醒加仓 |
 
-**注意**: 闲置唤醒不增加 step
+**平衡版金额公式**
+
+```python
+T = 3000
+H = clip(sqrt(T / current_value), 0.4, 1.6)
+r = (current_nav - last_nav) / last_nav
+mid_pos = (current_nav - low_250) / (high_250 - low_250)
+
+if r <= -0.03:
+    P1 = 1.2
+elif r <= 0.03:
+    P1 = 1.0
+elif r <= 0.06:
+    P1 = 0.8
+elif r <= 0.10:
+    P1 = 0.6
+else:
+    P1 = 0.4
+
+if mid_pos <= 0.35:
+    P2 = 1.2
+elif mid_pos <= 0.65:
+    P2 = 1.0
+elif mid_pos <= 0.85:
+    P2 = 0.7
+else:
+    P2 = 0.4
+
+idle_amount = clip(100 * H * P1 * P2, 20, 150)
+idle_amount = round_to_step(idle_amount, 10)
+```
+
+**执行口径**
+- 最终金额按 `10元` 步进取整，便于实际下单
+
+**规则解释**
+- 当前持仓越小，闲置唤醒金额越大
+- 当前价格较上次监控点涨幅越高，闲置唤醒金额越小，但不再直接归零
+- 若基金在近 250 个净值点区间仍处中位或低位，可保留小额或正常闲置唤醒
+- 若基金在近 250 个净值点区间已偏高，则进一步缩量
+- `GRID` 阶段不参与闲置唤醒
+- 闲置唤醒不增加 `step`
 
 ---
 
@@ -160,6 +201,16 @@ elif trigger_reason in ['网格买入', '闲置唤醒']:
 
 ---
 
+## 主账同步规则
+
+- `strategy_trades / strategy_positions` 是策略账，负责阶段、step、监控点与策略动作。
+- `fund_trades / fund_holdings` 是基金主账，负责最终持仓、成本和报表展示。
+- 策略交易一旦 `CONFIRMED`，必须同步写入基金主账；只写策略账、不写主账，视为异常。
+- 买入通常按金额驱动；卖出若用户下达的是份额，则按份额驱动，正式净值出来后仅回算金额。
+- 用户提供平台实际份额、收益或成本时，以用户实际值为准，可直接修正主账与策略账。
+- 每日 9:00 必跑巡检：先对齐安全缓存，再检查持仓分叉、长时间 pending、GRID 状态异常；出现 `error/warn` 即提醒。
+- `daily_fund_snapshot` 是展示快照，不作为手工修正后的唯一真值；真实口径以 `fund_holdings / fund_trades` 为准。
+
 ## 数据库设计
 
 ### strategy_positions
@@ -198,6 +249,7 @@ elif trigger_reason in ['网格买入', '闲置唤醒']:
 | 8:26 | sync_trades.py | 同步基金系统交易 |
 | 8:28 | strategy.py update_navs | 补充手动操作净值 |
 | 8:35 | strategy.py check | 检查操作建议 |
+| 9:00 | morning_audit.py | 先做安全缓存对齐，再做一致性巡检，异常时 Telegram 提醒 |
 
 ---
 
@@ -215,6 +267,7 @@ elif trigger_reason in ['网格买入', '闲置唤醒']:
 **关键点**:
 - 监督点（`last_date`）立即更新
 - 监督净值（`last_nav`）隔日更新
+- 买入通常按金额驱动；若卖出是按份额下达，则确认时保持份额不变，仅按正式净值回算金额
 - 不干扰基金系统的正常流程
 
 ---
